@@ -7,7 +7,7 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "token-usage"
 CACHE_FILE = CACHE_DIR / "summary.json"
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 
 def read(max_age_seconds: int) -> dict | None:
@@ -29,5 +29,5 @@ def write(data: dict) -> None:
     payload = {**data, "_version": CACHE_VERSION}
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CACHE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload))
+    tmp.write_text(json.dumps(payload, default=str))
     tmp.replace(CACHE_FILE)

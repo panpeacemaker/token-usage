@@ -3,50 +3,79 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def _fmt_int(n: int) -> str:
-    return f"{n:,}"
-
-
-def _fmt_ts(iso: str | None) -> str:
-    if not iso:
+def _fmt_local_time(iso_dt: datetime | str | None) -> str:
+    if iso_dt is None:
         return "—"
     try:
-        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M")
-    except Exception:
-        return iso
+        if isinstance(iso_dt, str):
+            iso_dt = datetime.fromisoformat(iso_dt)
+        return iso_dt.astimezone().strftime("%a %H:%M")
+    except ValueError:
+        return str(iso_dt)
+
+
+def _fmt_int(n) -> str:
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError):
+        return str(n)
 
 
 def format_detail(summary: dict, openai: dict | None = None) -> str:
-    active = summary.get("active_block") or {}
-    week = summary.get("week") or {}
-    plan = summary.get("plan", "pro")
-
     lines: list[str] = []
-    lines.append(f"🤖 Claude ({plan}) — Usage")
+    sub = summary.get("subscription_type", "unknown")
+    tier = summary.get("rate_limit_tier", "unknown")
+    lines.append(f"🤖 Claude ({sub}) — {tier}")
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
 
-    if active.get("present"):
-        lines.append(f"⏱  5h block  {active['pct']:.1f}%  ({_fmt_int(active['tokens'])} / {_fmt_int(active['limit_tokens'])} tok)")
-        lines.append(f"   started {_fmt_ts(active.get('start_utc'))}  ends {_fmt_ts(active.get('end_utc'))}")
-        models = active.get("models") or {}
-        if models:
-            top = sorted(models.items(), key=lambda kv: -kv[1])[:3]
-            lines.append("   models: " + ", ".join(f"{m.split('-')[1] if '-' in m else m}:{_fmt_int(t)}" for m, t in top))
+    if not summary.get("available"):
+        lines.append(f"  ⚠ unavailable: {summary.get('error', 'unknown')}")
     else:
-        lines.append("⏱  5h block  idle")
+        five_pct = summary.get("five_hour_pct", 0)
+        five_reset = summary.get("five_hour_resets_at")
+        seven_pct = summary.get("seven_day_pct", 0)
+        seven_reset = summary.get("seven_day_resets_at")
+
+        lines.append(f"  ⏱  5-hour:  {five_pct:5.1f}%   resets {_fmt_local_time(five_reset)}")
+        lines.append(f"  📅 7-day:   {seven_pct:5.1f}%   resets {_fmt_local_time(seven_reset)}")
+
+        opus_pct = summary.get("seven_day_opus_pct")
+        if opus_pct is not None:
+            lines.append(f"     └ opus:   {opus_pct:5.1f}%")
+        sonnet_pct = summary.get("seven_day_sonnet_pct")
+        if sonnet_pct is not None:
+            lines.append(f"     └ sonnet: {sonnet_pct:5.1f}%")
+
+    local = summary.get("local")
+    if local and not local.get("error"):
+        ab = local.get("active_block") or {}
+        wk = local.get("week") or {}
+        lines.append("")
+        lines.append("Local JSONL stats:")
+        if ab.get("present"):
+            tokens = ab.get("tokens", 0)
+            models = ab.get("models") or {}
+            lines.append(f"  current block: {_fmt_int(tokens)} tokens")
+            if models:
+                top = sorted(models.items(), key=lambda kv: -kv[1])[:3]
+                for m, t in top:
+                    short = m.split("-")[1] if "-" in m else m
+                    lines.append(f"     {short}: {_fmt_int(t)}")
+        wk_msgs = wk.get("messages", 0)
+        wk_toks = wk.get("tokens", 0)
+        if wk_toks or wk_msgs:
+            lines.append(f"  this week: {wk_msgs} msgs / {_fmt_int(wk_toks)} tokens")
 
     lines.append("")
-    lines.append(f"📅 Week     {week.get('pct', 0):.1f}%  ({_fmt_int(week.get('tokens', 0))} / {_fmt_int(week.get('limit_tokens', 0))} tok)")
-    lines.append(f"   messages  {week.get('pct_messages', 0):.1f}%  ({week.get('messages', 0)} / {week.get('limit_messages', 0)})")
-
+    lines.append("🟢 ChatGPT Plus")
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
     if openai:
-        lines.append("")
-        lines.append("🟢 ChatGPT Plus")
-        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
         if openai.get("available"):
-            lines.append(f"   primary   {openai.get('primary_pct', 0):.1f}%")
-            lines.append(f"   review    {openai.get('review_pct', 0):.1f}%")
+            lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%")
+            lines.append(f"  review:  {openai.get('review_pct', 0):5.1f}%")
         else:
-            lines.append(f"   unavailable: {openai.get('error', 'unknown')}")
+            lines.append(f"  ⚠ unavailable: {openai.get('error', 'not configured')}")
+    else:
+        lines.append("  ⚠ unavailable: not configured")
 
     return "\n".join(lines)

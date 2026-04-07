@@ -7,6 +7,7 @@ from dataclasses import asdict
 from . import cache
 from . import config as cfg_mod
 from .claude import aggregator, limits as limits_mod, reader
+from .claude.oauth_usage import fetch_usage as fetch_claude_usage
 from .formatters import detail, json_out, statusbar
 
 
@@ -15,9 +16,23 @@ def _build_summary(cfg) -> tuple[dict, dict | None]:
     if cached is not None:
         return cached.get("summary", {}), cached.get("openai")
 
-    entries = reader.load_entries()
-    plan_limits = limits_mod.get_limits(cfg.plan, cfg.limits_override)
-    summary = aggregator.summarize(entries, plan_limits)
+    claude_usage = fetch_claude_usage()
+    summary = asdict(claude_usage)
+
+    if claude_usage.available:
+        try:
+            entries = reader.load_entries()
+            plan_limits = limits_mod.get_limits(cfg.plan, cfg.limits_override)
+            local_summary = aggregator.summarize(entries, plan_limits)
+            summary["local"] = {
+                "active_block": local_summary.get("active_block"),
+                "week": local_summary.get("week"),
+                "total_entries": local_summary.get("total_entries"),
+            }
+        except Exception as e:
+            summary["local"] = {"error": str(e)}
+    else:
+        summary["local"] = None
 
     openai_data = None
     if cfg.openai_enabled:
