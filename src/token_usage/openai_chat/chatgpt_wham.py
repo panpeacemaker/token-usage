@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
+from pathlib import Path
 
 WHAM_URL = "https://chatgpt.com/backend-api/wham/usage"
 SESSION_URL = "https://chatgpt.com/api/auth/session"
@@ -19,6 +20,18 @@ class ChatGPTUsage:
     review_reset_at: int | None = None
 
 
+def _zen_cookie_file() -> Path | None:
+    """Find the cookies.sqlite in ~/.zen/<profile>/ — prefer 'Default' profiles."""
+    zen_root = Path.home() / ".zen"
+    if not zen_root.exists():
+        return None
+    candidates = sorted(
+        zen_root.glob("*/cookies.sqlite"),
+        key=lambda p: (0 if "Default" in p.parent.name else 1, p.parent.name),
+    )
+    return candidates[0] if candidates else None
+
+
 def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
     try:
         requests = importlib.import_module("curl_cffi.requests")
@@ -30,13 +43,20 @@ def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
         return ChatGPTUsage(available=False, error="browser_cookie3 not installed")
 
     try:
-        cj_func = {
-            "firefox": browser_cookie3.firefox,
-            "chrome": browser_cookie3.chrome,
-            "chromium": browser_cookie3.chromium,
-            "brave": browser_cookie3.brave,
-        }.get(browser.lower(), browser_cookie3.firefox)
-        cj = cj_func(domain_name="chatgpt.com")
+        browser_lower = browser.lower()
+        if browser_lower == "zen":
+            zen_file = _zen_cookie_file()
+            if zen_file is None:
+                return ChatGPTUsage(available=False, error="Zen profile not found")
+            cj = browser_cookie3.firefox(cookie_file=str(zen_file), domain_name="chatgpt.com")
+        else:
+            cj_func = {
+                "firefox": browser_cookie3.firefox,
+                "chrome": browser_cookie3.chrome,
+                "chromium": browser_cookie3.chromium,
+                "brave": browser_cookie3.brave,
+            }.get(browser_lower, browser_cookie3.firefox)
+            cj = cj_func(domain_name="chatgpt.com")
     except Exception as e:
         return ChatGPTUsage(available=False, error=f"cookie extraction failed: {e}")
 

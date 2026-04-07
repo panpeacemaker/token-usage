@@ -8,7 +8,7 @@ messages_weekly = 250
 
 [openai]
 enabled = true
-browser = "firefox"
+browser = "zen"
 
 [cache]
 ttl_seconds = 30
