@@ -11,13 +11,11 @@ requires-python = ">=3.10"
 license = {file = "LICENSE"}
 dependencies = [
   "tomli; python_version<'3.11'",
-]
-
-[project.optional-dependencies]
-openai = [
   "curl_cffi>=0.7",
   "browser-cookie3>=0.19",
 ]
+
+[project.optional-dependencies]
 dev = [
   "pytest>=7",
 ]

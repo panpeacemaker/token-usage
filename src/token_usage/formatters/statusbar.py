@@ -7,8 +7,15 @@ def format_compact(summary: dict, openai: dict | None = None) -> str:
     c5 = active.get("pct", 0)
     cw = week.get("pct", 0)
 
-    parts = [f"🤖 C 5h:{c5:.0f}% W:{cw:.0f}%"]
+    def fmt_pct(value: float) -> str:
+        if value < 1:
+            return f"{value:.2f}%"
+        if value < 10:
+            return f"{value:.1f}%"
+        return f"{value:.0f}%"
+
+    parts = [f"🤖 C 5h:{fmt_pct(c5)} W:{fmt_pct(cw)}"]
     if openai and openai.get("available"):
         op = openai.get("primary_pct", 0)
-        parts.append(f"O:{op:.0f}%")
+        parts.append(f"O:{fmt_pct(float(op))}")
     return " ".join(parts)

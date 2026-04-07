@@ -1,3 +1,12 @@
+"""Conservative Claude plan ceilings calibrated to observed usage.
+
+Anthropic does not publish exact token limits, so these defaults use roughly
+2x the user's observed p99 historical usage as a safe ceiling. Override any
+plan in ~/.config/token-usage/config.toml when local usage differs. Weekly
+message caps are more reliable than token caps, so keep messages_weekly as the
+primary published constraint.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,9 +21,9 @@ class PlanLimits:
 
 
 DEFAULT_LIMITS: dict[str, PlanLimits] = {
-    "pro": PlanLimits("pro", tokens_5h=19_000, tokens_weekly=500_000, messages_weekly=250),
-    "max5": PlanLimits("max5", tokens_5h=88_000, tokens_weekly=2_500_000, messages_weekly=1_000),
-    "max20": PlanLimits("max20", tokens_5h=220_000, tokens_weekly=6_000_000, messages_weekly=2_000),
+    "pro": PlanLimits("pro", tokens_5h=20_000_000, tokens_weekly=400_000_000, messages_weekly=250),
+    "max5": PlanLimits("max5", tokens_5h=100_000_000, tokens_weekly=2_000_000_000, messages_weekly=1_000),
+    "max20": PlanLimits("max20", tokens_5h=400_000_000, tokens_weekly=8_000_000_000, messages_weekly=2_000),
 }
 
 

@@ -1,5 +1,5 @@
 [claude]
-plan = "pro"
+plan = "max20"
 
 [claude.limits.pro]
 tokens_5h = 19000
@@ -7,7 +7,7 @@ tokens_weekly = 500000
 messages_weekly = 250
 
 [openai]
-enabled = false
+enabled = true
 browser = "firefox"
 
 [cache]
