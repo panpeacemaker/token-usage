@@ -3,20 +3,32 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import aggregator, reader
+from . import aggregator, opencode_reader, reader
 from .limits import PlanLimits
-from .models import ClaudeUsage
+from .models import ClaudeUsage, UsageEntry
+
+
+def _merge_sources(
+    jsonl_root: Path | None,
+    opencode_db: Path | None,
+) -> list[UsageEntry]:
+    entries: list[UsageEntry] = []
+    entries.extend(reader.load_entries(jsonl_root))
+    entries.extend(opencode_reader.load_entries(opencode_db))
+    entries.sort(key=lambda e: e.timestamp)
+    return entries
 
 
 def compute_local(
     plan_limits: PlanLimits,
     now: datetime | None = None,
     root: Path | None = None,
+    opencode_db: Path | None = None,
 ) -> tuple[ClaudeUsage, dict]:
     now = now or datetime.now(timezone.utc)
 
     try:
-        entries = reader.load_entries(root)
+        entries = _merge_sources(root, opencode_db)
     except Exception as e:
         return (
             ClaudeUsage(available=False, error=f"local read failed: {e}"),
@@ -50,24 +62,14 @@ def compute_local(
     if five_h_reset is None:
         five_h_reset = now + timedelta(hours=5)
 
-    seven_d_reset = None
-    week_start_str = week.get("start_utc")
-    if week_start_str:
-        try:
-            seven_d_reset = datetime.fromisoformat(week_start_str) + timedelta(days=7)
-        except (ValueError, TypeError):
-            pass
-
-    week_pct_tokens = float(week.get("pct") or 0)
-    week_pct_messages = float(week.get("pct_messages") or 0)
-    seven_day_pct = max(week_pct_tokens, week_pct_messages)
+    seven_day_pct = float(week.get("pct") or 0)
 
     usage = ClaudeUsage(
         available=True,
         five_hour_pct=float(active.get("pct") or 0),
         five_hour_resets_at=five_h_reset,
         seven_day_pct=seven_day_pct,
-        seven_day_resets_at=seven_d_reset,
+        seven_day_resets_at=None,
         subscription_type="local",
         rate_limit_tier=plan_limits.name,
     )

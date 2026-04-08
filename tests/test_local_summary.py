@@ -32,7 +32,11 @@ def _entry(ts: str, msg_id: str, req_id: str, tokens: int) -> dict:
 
 def test_empty_directory_returns_unavailable(tmp_path: Path) -> None:
     limits = get_limits("pro")
-    usage, detail = local_summary.compute_local(limits, root=tmp_path)
+    usage, detail = local_summary.compute_local(
+        limits,
+        root=tmp_path,
+        opencode_db=tmp_path / "missing.db",
+    )
     assert usage.available is False
     assert "no local" in usage.error.lower()
     assert detail.get("total_entries") == 0
@@ -49,7 +53,12 @@ def test_populated_directory_returns_usage(tmp_path: Path) -> None:
         ],
     )
     limits = get_limits("pro", {"pro": {"tokens_5h": 10000}})
-    usage, detail = local_summary.compute_local(limits, now=now, root=tmp_path)
+    usage, detail = local_summary.compute_local(
+        limits,
+        now=now,
+        root=tmp_path,
+        opencode_db=tmp_path / "missing.db",
+    )
 
     assert usage.available is True
     assert usage.subscription_type == "local"
@@ -57,8 +66,7 @@ def test_populated_directory_returns_usage(tmp_path: Path) -> None:
     assert usage.five_hour_pct > 0
     assert usage.five_hour_resets_at is not None
     assert usage.five_hour_resets_at > now
-    assert usage.seven_day_resets_at is not None
-    assert usage.seven_day_resets_at > now
+    assert usage.seven_day_resets_at is None
     assert detail["active_block"]["tokens"] == 3000
 
 
@@ -70,7 +78,12 @@ def test_weekly_pct_uses_max_of_tokens_and_messages(tmp_path: Path) -> None:
         [_entry(ts, f"msg-{i}", f"req-{i}", 100) for i in range(5)],
     )
     limits = get_limits("pro", {"pro": {"tokens_weekly": 1000, "messages_weekly": 10}})
-    usage, _ = local_summary.compute_local(limits, now=now, root=tmp_path)
+    usage, _ = local_summary.compute_local(
+        limits,
+        now=now,
+        root=tmp_path,
+        opencode_db=tmp_path / "missing.db",
+    )
     assert usage.available is True
     assert usage.seven_day_pct == 50.0
 
@@ -83,7 +96,12 @@ def test_fallback_five_h_reset_when_no_active_block(tmp_path: Path) -> None:
         [_entry(old_ts, "msg-old", "req-old", 1000)],
     )
     limits = get_limits("pro")
-    usage, _ = local_summary.compute_local(limits, now=now, root=tmp_path)
+    usage, _ = local_summary.compute_local(
+        limits,
+        now=now,
+        root=tmp_path,
+        opencode_db=tmp_path / "missing.db",
+    )
     assert usage.available is True
     assert usage.five_hour_resets_at is not None
     assert usage.five_hour_resets_at >= now + timedelta(hours=4, minutes=59)
