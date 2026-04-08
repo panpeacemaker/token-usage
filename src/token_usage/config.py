@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import importlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,7 +21,6 @@ class Config:
     openai_enabled: bool = True
     openai_browser: str = "zen"
     cache_ttl_seconds: int = 90
-    stale_fallback_max_age_seconds: int = 900
 
 
 def load() -> Config:
@@ -41,5 +40,4 @@ def load() -> Config:
         openai_enabled=bool(openai_cfg.get("enabled", True)),
         openai_browser=openai_cfg.get("browser", "zen"),
         cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 90)),
-        stale_fallback_max_age_seconds=int(cache_cfg.get("stale_fallback_max_age_seconds", 900)),
     )

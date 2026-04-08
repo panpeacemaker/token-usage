@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 token-usage = "token_usage.cli:main"
+token-usage-statusline = "token_usage.statusline_writer:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/token_usage"]

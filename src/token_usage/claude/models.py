@@ -40,3 +40,19 @@ class SessionBlock:
 
     def contains(self, ts: datetime) -> bool:
         return self.start <= ts < self.end
+
+
+@dataclass
+class ClaudeUsage:
+    available: bool
+    error: str | None = None
+    five_hour_pct: float = 0.0
+    five_hour_resets_at: datetime | None = None
+    seven_day_pct: float = 0.0
+    seven_day_resets_at: datetime | None = None
+    seven_day_opus_pct: float | None = None
+    seven_day_opus_resets_at: datetime | None = None
+    seven_day_sonnet_pct: float | None = None
+    seven_day_sonnet_resets_at: datetime | None = None
+    subscription_type: str = "unknown"
+    rate_limit_tier: str = "unknown"

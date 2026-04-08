@@ -7,7 +7,7 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "token-usage"
 CACHE_FILE = CACHE_DIR / "summary.json"
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 
 
 def read_raw() -> dict | None:
@@ -26,45 +26,21 @@ def read(max_age_seconds: int) -> dict | None:
     data = read_raw()
     if data is None:
         return None
+    if max_age_seconds <= 0:
+        return None
     fetched_at = data.get("fetched_at", 0)
     if time.time() - fetched_at > max_age_seconds:
         return None
     return data
 
 
-def write(payload: dict, next_retry_at: float = 0.0) -> None:
+def write(payload: dict) -> None:
     data = {
         **payload,
         "_version": CACHE_VERSION,
         "fetched_at": time.time(),
-        "next_retry_at": next_retry_at,
     }
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CACHE_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, default=str))
-    tmp.replace(CACHE_FILE)
-
-
-def update_retry_at(next_retry_at: float) -> None:
-    data = read_raw()
-    if data is None:
-        return
-    data["next_retry_at"] = next_retry_at
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CACHE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, default=str))
-    tmp.replace(CACHE_FILE)
-
-
-def write_cooldown_only(next_retry_at: float) -> None:
-    data = {
-        "_version": CACHE_VERSION,
-        "summary": None,
-        "openai": None,
-        "fetched_at": 0,
-        "next_retry_at": next_retry_at,
-    }
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = CACHE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data))
     tmp.replace(CACHE_FILE)
