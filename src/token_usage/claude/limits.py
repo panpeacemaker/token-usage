@@ -21,9 +21,9 @@ class PlanLimits:
 
 
 DEFAULT_LIMITS: dict[str, PlanLimits] = {
-    "pro": PlanLimits("pro", tokens_5h=20_000_000, tokens_weekly=400_000_000, messages_weekly=250),
-    "max5": PlanLimits("max5", tokens_5h=100_000_000, tokens_weekly=2_000_000_000, messages_weekly=1_000),
-    "max20": PlanLimits("max20", tokens_5h=400_000_000, tokens_weekly=8_000_000_000, messages_weekly=2_000),
+    "pro": PlanLimits("pro", tokens_5h=25_000_000, tokens_weekly=560_000_000, messages_weekly=250),
+    "max5": PlanLimits("max5", tokens_5h=125_000_000, tokens_weekly=2_800_000_000, messages_weekly=1_000),
+    "max20": PlanLimits("max20", tokens_5h=500_000_000, tokens_weekly=11_200_000_000, messages_weekly=2_000),
 }
 
 

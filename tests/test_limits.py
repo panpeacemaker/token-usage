@@ -6,7 +6,7 @@ from token_usage.claude.limits import DEFAULT_LIMITS, get_limits
 def test_defaults() -> None:
     l = get_limits("pro")
     assert l.name == "pro"
-    assert l.tokens_5h == 20_000_000
+    assert l.tokens_5h == 25_000_000
 
 
 def test_override() -> None:
