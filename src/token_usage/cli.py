@@ -6,7 +6,7 @@ from dataclasses import asdict
 
 from . import cache
 from . import config as cfg_mod
-from .claude import limits as limits_mod, local_summary, statusline
+from .claude import limits as limits_mod, local_summary, oauth_usage, statusline
 from .claude.models import ClaudeUsage
 from .formatters import detail, json_out, statusbar
 
@@ -30,21 +30,30 @@ def _build_summary(cfg: cfg_mod.Config) -> tuple[dict, dict | None]:
     statusline_usage = statusline.read_statusline_usage()
 
     claude_usage: ClaudeUsage
+    source: str
+    oauth_error: str | None = None
     if statusline_usage is not None and statusline.is_still_valid(statusline_usage):
         claude_usage = statusline_usage
         source = "statusline"
-    elif local_usage.available:
-        claude_usage = local_usage
-        source = "local"
-    elif statusline_usage is not None:
-        claude_usage = statusline_usage
-        source = "statusline-stale"
     else:
-        claude_usage = ClaudeUsage(
-            available=False,
-            error="no statusline cache and no local JSONL entries",
-        )
-        source = "none"
+        oauth_result = oauth_usage.fetch_usage()
+        if oauth_result.available:
+            claude_usage = oauth_result
+            source = "oauth"
+        else:
+            oauth_error = oauth_result.error
+            if local_usage.available:
+                claude_usage = local_usage
+                source = "local"
+            elif statusline_usage is not None:
+                claude_usage = statusline_usage
+                source = "statusline-stale"
+            else:
+                claude_usage = ClaudeUsage(
+                    available=False,
+                    error=f"oauth: {oauth_error}; no statusline or local fallback",
+                )
+                source = "none"
 
     summary = asdict(claude_usage)
     summary["_source"] = source

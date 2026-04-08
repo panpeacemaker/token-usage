@@ -11,4 +11,4 @@ enabled = true
 browser = "zen"
 
 [cache]
-ttl_seconds = 30
+ttl_seconds = 300

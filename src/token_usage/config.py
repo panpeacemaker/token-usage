@@ -20,7 +20,7 @@ class Config:
     limits_override: dict = field(default_factory=dict)
     openai_enabled: bool = True
     openai_browser: str = "zen"
-    cache_ttl_seconds: int = 90
+    cache_ttl_seconds: int = 300
 
 
 def load() -> Config:
@@ -39,5 +39,5 @@ def load() -> Config:
         limits_override=claude.get("limits", {}) or {},
         openai_enabled=bool(openai_cfg.get("enabled", True)),
         openai_browser=openai_cfg.get("browser", "zen"),
-        cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 90)),
+        cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 300)),
     )
