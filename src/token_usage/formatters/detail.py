@@ -21,12 +21,39 @@ def _fmt_int(n) -> str:
         return str(n)
 
 
+def _fmt_age_seconds(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60}m"
+
+
 def format_detail(summary: dict, openai: dict | None = None) -> str:
+    import time as _time
+
     lines: list[str] = []
     sub = summary.get("subscription_type", "unknown")
     tier = summary.get("rate_limit_tier", "unknown")
-    lines.append(f"🤖 Claude ({sub}) — {tier}")
+    stale_marker = " [STALE]" if summary.get("_stale") else ""
+    lines.append(f"Claude ({sub}) — {tier}{stale_marker}")
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
+
+    if summary.get("_stale"):
+        reason = summary.get("_stale_reason", "unknown")
+        fetched_at = summary.get("_fetched_at")
+        retry_at = summary.get("_retry_at")
+        if fetched_at:
+            age = _time.time() - float(fetched_at)
+            lines.append(f"  ⚠ showing cached data ({_fmt_age_seconds(age)} old)")
+        else:
+            lines.append("  ⚠ showing cached data")
+        lines.append(f"     reason: {reason}")
+        if retry_at:
+            eta = float(retry_at) - _time.time()
+            if eta > 0:
+                lines.append(f"     next retry in: {_fmt_age_seconds(eta)}")
 
     if not summary.get("available"):
         lines.append(f"  ⚠ unavailable: {summary.get('error', 'unknown')}")

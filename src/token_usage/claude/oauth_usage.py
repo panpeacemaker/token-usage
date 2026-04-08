@@ -29,6 +29,7 @@ ANTHROPIC_BETA = "oauth-2025-04-20"
 class ClaudeUsage:
     available: bool
     error: str | None = None
+    retry_after_seconds: int | None = None
     five_hour_pct: float = 0.0
     five_hour_resets_at: datetime | None = None
     seven_day_pct: float = 0.0
@@ -64,7 +65,9 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
-def _http_get(url: str, token: str, timeout: int = 10) -> tuple[dict | None, str | None]:
+def _http_get(
+    url: str, token: str, timeout: int = 10
+) -> tuple[dict | None, str | None, int | None]:
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/json")
@@ -73,18 +76,25 @@ def _http_get(url: str, token: str, timeout: int = 10) -> tuple[dict | None, str
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", errors="replace")
-        return json.loads(body), None
+        return json.loads(body), None, None
     except urllib.error.HTTPError as e:
         body = ""
         try:
             body = e.read().decode("utf-8", errors="replace")[:200]
         except Exception:
             pass
-        return None, f"http {e.code}: {body}"
+        retry_after = None
+        try:
+            ra_header = e.headers.get("Retry-After") if e.headers else None
+            if ra_header is not None:
+                retry_after = int(float(ra_header))
+        except (TypeError, ValueError):
+            retry_after = None
+        return None, f"http {e.code}: {body}", retry_after
     except urllib.error.URLError as e:
-        return None, f"url error: {e.reason}"
+        return None, f"url error: {e.reason}", None
     except (OSError, json.JSONDecodeError) as e:
-        return None, f"read/parse error: {e}"
+        return None, f"read/parse error: {e}", None
 
 
 def fetch_usage() -> ClaudeUsage:
@@ -94,7 +104,7 @@ def fetch_usage() -> ClaudeUsage:
     if token is None:
         return ClaudeUsage(available=False, error="missing access token")
 
-    profile, _ = _http_get(PROFILE_ENDPOINT, token)
+    profile, _, _ = _http_get(PROFILE_ENDPOINT, token)
     sub_type = "unknown"
     rl_tier = "unknown"
     if profile:
@@ -102,11 +112,12 @@ def fetch_usage() -> ClaudeUsage:
         sub_type = org.get("organization_type") or "unknown"
         rl_tier = org.get("rate_limit_tier") or "unknown"
 
-    data, err = _http_get(USAGE_ENDPOINT, token)
+    data, err, retry_after = _http_get(USAGE_ENDPOINT, token)
     if err or not data:
         return ClaudeUsage(
             available=False,
             error=err or "empty response",
+            retry_after_seconds=retry_after,
             subscription_type=sub_type,
             rate_limit_tier=rl_tier,
         )

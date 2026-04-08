@@ -7,27 +7,64 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "token-usage"
 CACHE_FILE = CACHE_DIR / "summary.json"
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 
-def read(max_age_seconds: int) -> dict | None:
+def read_raw() -> dict | None:
     if not CACHE_FILE.exists():
         return None
     try:
-        age = time.time() - CACHE_FILE.stat().st_mtime
-        if age > max_age_seconds:
-            return None
         data = json.loads(CACHE_FILE.read_text())
-        if data.get("_version") != CACHE_VERSION:
-            return None
-        return data
     except (OSError, json.JSONDecodeError):
         return None
+    if data.get("_version") != CACHE_VERSION:
+        return None
+    return data
 
 
-def write(data: dict) -> None:
-    payload = {**data, "_version": CACHE_VERSION}
+def read(max_age_seconds: int) -> dict | None:
+    data = read_raw()
+    if data is None:
+        return None
+    fetched_at = data.get("fetched_at", 0)
+    if time.time() - fetched_at > max_age_seconds:
+        return None
+    return data
+
+
+def write(payload: dict, next_retry_at: float = 0.0) -> None:
+    data = {
+        **payload,
+        "_version": CACHE_VERSION,
+        "fetched_at": time.time(),
+        "next_retry_at": next_retry_at,
+    }
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = CACHE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, default=str))
+    tmp.write_text(json.dumps(data, default=str))
+    tmp.replace(CACHE_FILE)
+
+
+def update_retry_at(next_retry_at: float) -> None:
+    data = read_raw()
+    if data is None:
+        return
+    data["next_retry_at"] = next_retry_at
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = CACHE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, default=str))
+    tmp.replace(CACHE_FILE)
+
+
+def write_cooldown_only(next_retry_at: float) -> None:
+    data = {
+        "_version": CACHE_VERSION,
+        "summary": None,
+        "openai": None,
+        "fetched_at": 0,
+        "next_retry_at": next_retry_at,
+    }
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = CACHE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
     tmp.replace(CACHE_FILE)

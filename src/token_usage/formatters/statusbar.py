@@ -28,8 +28,9 @@ def _format_claude_segment(summary: dict, weekly_warn_threshold: float) -> str:
     c_5h = float(summary.get("five_hour_pct", 0) or 0)
     c_week = float(summary.get("seven_day_pct", 0) or 0)
     reset = _local_hhmm(summary.get("five_hour_resets_at"))
+    stale_marker = "*" if summary.get("_stale") else ""
 
-    out = f"C {c_5h:.0f}%"
+    out = f"C {c_5h:.0f}%{stale_marker}"
     if c_week >= weekly_warn_threshold:
         out += f" w {c_week:.0f}%"
     if reset:
