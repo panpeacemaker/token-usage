@@ -16,7 +16,7 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 @dataclass
 class Config:
-    plan: str = "max20"
+    plan: str = "max5"
     limits_override: dict = field(default_factory=dict)
     openai_enabled: bool = True
     openai_browser: str = "zen"
@@ -35,7 +35,7 @@ def load() -> Config:
     openai_cfg = data.get("openai") or {}
     cache_cfg = data.get("cache") or {}
     return Config(
-        plan=claude.get("plan", "max20"),
+        plan=claude.get("plan", "max5"),
         limits_override=claude.get("limits", {}) or {},
         openai_enabled=bool(openai_cfg.get("enabled", True)),
         openai_browser=openai_cfg.get("browser", "zen"),

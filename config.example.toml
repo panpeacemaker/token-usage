@@ -1,5 +1,5 @@
 [claude]
-plan = "max20"
+plan = "max5"
 
 [claude.limits.pro]
 tokens_5h = 19000
