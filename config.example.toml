@@ -1,5 +1,11 @@
 [claude]
 plan = "max5"
+# Weekly reset time shown in --detail output. Percentages still use a
+# rolling 7-day window, but this is the wall-clock time your Max cycle
+# nominally resets at (matches the claude.ai dashboard "Resets ..." label).
+# weekday: 0=Monday ... 6=Sunday. Hour is in your system's local timezone.
+weekly_reset_weekday = 0
+weekly_reset_hour_local = 22
 
 [claude.limits.pro]
 tokens_5h = 19000

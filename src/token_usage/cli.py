@@ -25,8 +25,11 @@ def _build_summary(cfg: cfg_mod.Config) -> tuple[dict, dict | None]:
         return fresh_cache.get("summary", {}), fresh_cache.get("openai")
 
     plan_limits = limits_mod.get_limits(cfg.plan, cfg.limits_override)
-
-    local_usage, local_detail = local_summary.compute_local(plan_limits)
+    local_usage, local_detail = local_summary.compute_local(
+        plan_limits,
+        weekly_reset_weekday=cfg.weekly_reset_weekday,
+        weekly_reset_hour_local=cfg.weekly_reset_hour_local,
+    )
     statusline_usage = statusline.read_statusline_usage()
 
     claude_usage: ClaudeUsage

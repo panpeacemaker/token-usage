@@ -66,7 +66,9 @@ def test_populated_directory_returns_usage(tmp_path: Path) -> None:
     assert usage.five_hour_pct > 0
     assert usage.five_hour_resets_at is not None
     assert usage.five_hour_resets_at > now
-    assert usage.seven_day_resets_at is None
+    assert usage.seven_day_resets_at is not None
+    assert usage.seven_day_resets_at > now
+    assert usage.seven_day_resets_at <= now + timedelta(days=7)
     assert detail["active_block"]["tokens"] == 3000
 
 

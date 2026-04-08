@@ -19,11 +19,34 @@ def _merge_sources(
     return entries
 
 
+def _next_weekly_reset(
+    now: datetime,
+    weekday: int,
+    hour_local: int,
+) -> datetime | None:
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+        if local_tz is None:
+            return None
+        now_local = now.astimezone(local_tz)
+        days_ahead = (weekday - now_local.weekday()) % 7
+        candidate = now_local.replace(
+            hour=hour_local, minute=0, second=0, microsecond=0
+        ) + timedelta(days=days_ahead)
+        if candidate <= now_local:
+            candidate += timedelta(days=7)
+        return candidate.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
 def compute_local(
     plan_limits: PlanLimits,
     now: datetime | None = None,
     root: Path | None = None,
     opencode_db: Path | None = None,
+    weekly_reset_weekday: int = 0,
+    weekly_reset_hour_local: int = 22,
 ) -> tuple[ClaudeUsage, dict]:
     now = now or datetime.now(timezone.utc)
 
@@ -64,12 +87,14 @@ def compute_local(
 
     seven_day_pct = float(week.get("pct") or 0)
 
+    seven_d_reset = _next_weekly_reset(now, weekly_reset_weekday, weekly_reset_hour_local)
+
     usage = ClaudeUsage(
         available=True,
         five_hour_pct=float(active.get("pct") or 0),
         five_hour_resets_at=five_h_reset,
         seven_day_pct=seven_day_pct,
-        seven_day_resets_at=None,
+        seven_day_resets_at=seven_d_reset,
         subscription_type="local",
         rate_limit_tier=plan_limits.name,
     )

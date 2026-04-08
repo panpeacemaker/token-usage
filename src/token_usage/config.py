@@ -21,6 +21,8 @@ class Config:
     openai_enabled: bool = True
     openai_browser: str = "zen"
     cache_ttl_seconds: int = 300
+    weekly_reset_weekday: int = 0
+    weekly_reset_hour_local: int = 22
 
 
 def load() -> Config:
@@ -40,4 +42,6 @@ def load() -> Config:
         openai_enabled=bool(openai_cfg.get("enabled", True)),
         openai_browser=openai_cfg.get("browser", "zen"),
         cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 300)),
+        weekly_reset_weekday=int(claude.get("weekly_reset_weekday", 0)),
+        weekly_reset_hour_local=int(claude.get("weekly_reset_hour_local", 22)),
     )
