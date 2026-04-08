@@ -84,9 +84,12 @@ def format_detail(summary: dict, openai: dict | None = None) -> str:
             models = ab.get("models") or {}
             lines.append(f"  current block: {_fmt_int(tokens)} tokens")
             if models:
-                top = sorted(models.items(), key=lambda kv: -kv[1])[:3]
-                for m, t in top:
+                merged: dict[str, int] = {}
+                for m, t in models.items():
                     short = m.split("-")[1] if "-" in m else m
+                    merged[short] = merged.get(short, 0) + int(t)
+                top = sorted(merged.items(), key=lambda kv: -kv[1])[:3]
+                for short, t in top:
                     lines.append(f"     {short}: {_fmt_int(t)}")
         wk_msgs = wk.get("messages", 0)
         wk_toks = wk.get("tokens", 0)
