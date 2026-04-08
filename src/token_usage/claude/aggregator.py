@@ -17,15 +17,13 @@ def active_block(blocks: list[SessionBlock], now: datetime | None = None) -> Ses
     return None
 
 
-def week_start_utc(now: datetime | None = None, week_start_day: int = 0) -> datetime:
+def seven_day_start_utc(now: datetime | None = None) -> datetime:
     now = now or datetime.now(timezone.utc)
-    days_since_start = (now.weekday() - week_start_day) % 7
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_since_start)
-    return start
+    return now - timedelta(days=7)
 
 
 def weekly_entries(entries: list[UsageEntry], now: datetime | None = None) -> list[UsageEntry]:
-    start = week_start_utc(now)
+    start = seven_day_start_utc(now)
     return [e for e in entries if e.timestamp >= start]
 
 
@@ -55,7 +53,7 @@ def summarize(entries: list[UsageEntry], limits: PlanLimits, now: datetime | Non
             "models": active.models if active else {},
         },
         "week": {
-            "start_utc": week_start_utc(now).isoformat(),
+            "start_utc": seven_day_start_utc(now).isoformat(),
             "tokens": weekly_tokens,
             "limit_tokens": limits.tokens_weekly,
             "pct": pct(weekly_tokens, limits.tokens_weekly),
