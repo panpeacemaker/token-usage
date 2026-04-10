@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time as _time
 from datetime import datetime
 
 
@@ -31,8 +32,6 @@ def _fmt_age_seconds(seconds: float) -> str:
 
 
 def format_detail(summary: dict, openai: dict | None = None) -> str:
-    import time as _time
-
     lines: list[str] = []
     sub = summary.get("subscription_type", "unknown")
     tier = summary.get("rate_limit_tier", "unknown")

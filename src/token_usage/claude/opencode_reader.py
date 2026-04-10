@@ -27,8 +27,7 @@ def load_entries(db_path: Path | None = None) -> list[UsageEntry]:
         conn.row_factory = sqlite3.Row
         cursor = conn.execute(
             "SELECT id, time_created, data FROM message "
-            "WHERE data LIKE '%\"role\":\"assistant\"%' "
-            "   OR data LIKE '%\"role\": \"assistant\"%'"
+            "WHERE json_extract(data, '$.role') = 'assistant'"
         )
         entries: list[UsageEntry] = []
         for row in cursor:
