@@ -8,7 +8,12 @@ WEEKLY_WARN_THRESHOLD = 85.0
 def _local_hhmm(value) -> str:
     if value is None:
         return ""
-    if isinstance(value, str):
+    if isinstance(value, (int, float)):
+        try:
+            value = datetime.fromtimestamp(value).astimezone()
+        except (ValueError, OSError, OverflowError):
+            return ""
+    elif isinstance(value, str):
         try:
             value = datetime.fromisoformat(value)
         except ValueError:
@@ -40,9 +45,12 @@ def _format_claude_segment(summary: dict, weekly_warn_threshold: float) -> str:
 
 def _format_openai_segment(openai: dict, weekly_warn_threshold: float) -> str:
     o_5h = float(openai.get("primary_pct", 0) or 0)
+    reset = _local_hhmm(openai.get("primary_reset_at"))
     out = f"O {o_5h:.0f}%"
     if o_5h >= weekly_warn_threshold:
         out += f" w {o_5h:.0f}%"
+    if reset:
+        out += f" @{reset}"
     return out
 
 
