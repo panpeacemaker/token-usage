@@ -9,6 +9,21 @@ description = "Claude Code and ChatGPT Plus usage tracker"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
+keywords = ["claude", "chatgpt", "statusbar", "usage", "tracker", "cli"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Utilities",
+]
 dependencies = [
   "tomli; python_version<'3.11'",
   "curl_cffi>=0.7",
@@ -18,6 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7",
+  "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -35,4 +51,51 @@ include = [
   "LICENSE",
   "config.example.toml",
   "install.sh",
+  "CHANGELOG.md",
 ]
+
+# ---------------------------------------------------------------------------
+# Tooling configuration
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+]
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+  "SIM", # flake8-simplify
+  "RUF", # ruff-specific
+]
+ignore = [
+  "E501",  # line too long (formatter handles it)
+  "B008",  # function-call-in-default-argument (false positives with Path.home())
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]  # allow `assert False` in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
