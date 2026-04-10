@@ -14,8 +14,6 @@ class ChatGPTUsage:
     error: str | None = None
     primary_pct: float = 0.0
     primary_reset_at: int | None = None
-    codex_pct: float = 0.0
-    codex_reset_at: int | None = None
     review_pct: float = 0.0
     review_reset_at: int | None = None
 
@@ -105,8 +103,6 @@ def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
         available=True,
         primary_pct=pct(primary),
         primary_reset_at=reset(primary),
-        codex_pct=pct(primary),
-        codex_reset_at=reset(primary),
         review_pct=pct(code),
         review_reset_at=reset(code),
     )

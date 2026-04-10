@@ -31,7 +31,10 @@ def load() -> Config:
     try:
         with open(CONFIG_FILE, "rb") as f:
             data = tomllib.load(f)
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        import sys
+
+        print(f"warn: config load failed ({CONFIG_FILE}): {e}", file=sys.stderr)
         return Config()
     claude = data.get("claude") or {}
     openai_cfg = data.get("openai") or {}
