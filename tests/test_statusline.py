@@ -83,6 +83,18 @@ def test_is_still_valid_future_reset() -> None:
     assert statusline.is_still_valid(usage, now=now) is True
 
 
+def test_is_still_valid_five_hour_expired_seven_day_not() -> None:
+    now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=3.0,
+        five_hour_resets_at=now - timedelta(hours=6),
+        seven_day_pct=34.0,
+        seven_day_resets_at=now + timedelta(days=3),
+    )
+    assert statusline.is_still_valid(usage, now=now) is False
+
+
 def test_is_still_valid_all_expired() -> None:
     now = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
     usage = statusline.ClaudeUsage(

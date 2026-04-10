@@ -56,8 +56,8 @@ def is_still_valid(usage: ClaudeUsage | None, now: datetime | None = None) -> bo
     if usage is None or not usage.available:
         return False
     now = now or datetime.now(timezone.utc)
-    if usage.five_hour_resets_at and usage.five_hour_resets_at > now:
-        return True
-    if usage.seven_day_resets_at and usage.seven_day_resets_at > now:
-        return True
+    if usage.five_hour_resets_at:
+        return usage.five_hour_resets_at > now
+    if usage.seven_day_resets_at:
+        return usage.seven_day_resets_at > now
     return False
