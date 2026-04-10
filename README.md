@@ -15,7 +15,9 @@ The Claude side is a **hybrid of two sources**, neither of which hits a rate-lim
    ccusage-style aggregation of `~/.claude/projects/**/*.jsonl` using the
    plan limits in `config.toml`.
 
-No OAuth usage endpoint. No 429s. No rate-limit backoff.
+When both statusline and local JSONL are unavailable, the CLI falls back to
+the OAuth usage API (`/api/usage`). The source priority is:
+**statusline → OAuth → local JSONL → stale statusline → error**.
 
 ## Install
 
@@ -37,10 +39,11 @@ token-usage --statusbar   # compact: "| C 23% w 41% @14:30 "
 token-usage --detail      # multi-line detail
 token-usage --json        # raw JSON
 token-usage --no-cache    # bypass output cache
+token-usage --version     # print version
 ```
 
 The `_source` field in `--json` output shows which data source won:
-`statusline`, `local`, `statusline-stale`, or `none`.
+`statusline`, `oauth`, `local`, `statusline-stale`, or `none`.
 
 ## Config
 

@@ -8,8 +8,8 @@ weekly_reset_weekday = 0
 weekly_reset_hour_local = 22
 
 [claude.limits.pro]
-tokens_5h = 19000
-tokens_weekly = 500000
+tokens_5h = 25000000
+tokens_weekly = 560000000
 messages_weekly = 250
 
 [openai]
