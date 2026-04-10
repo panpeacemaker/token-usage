@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time as _time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def _fmt_local_time(iso_dt: datetime | str | None) -> str:
@@ -20,6 +20,15 @@ def _fmt_int(n) -> str:
         return f"{int(n):,}"
     except (TypeError, ValueError):
         return str(n)
+
+
+def _epoch_to_dt(value) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
 
 
 def _fmt_age_seconds(seconds: float) -> str:
@@ -100,7 +109,8 @@ def format_detail(summary: dict, openai: dict | None = None) -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
     if openai:
         if openai.get("available"):
-            lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%")
+            primary_reset = _fmt_local_time(_epoch_to_dt(openai.get("primary_reset_at")))
+            lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
             lines.append(f"  review:  {openai.get('review_pct', 0):5.1f}%")
         else:
             lines.append(f"  ⚠ unavailable: {openai.get('error', 'not configured')}")
