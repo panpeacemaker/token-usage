@@ -146,13 +146,10 @@ def test_main_only_kimi_renders_bare(capsys) -> None:
         rc = cli_mod.main(["--statusbar", "--only", "kimi"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert out.startswith("K ")
-    assert not out.startswith("| ")
-    assert "C " not in out
-    assert "O " not in out
+    assert out == "k7%"
 
 
-def test_main_only_csv_renders_combined_framing(capsys) -> None:
+def test_main_only_csv_renders_combined(capsys) -> None:
     cfg = cfg_mod.Config()
     with (
         patch.object(cfg_mod, "load", return_value=cfg),
@@ -169,10 +166,7 @@ def test_main_only_csv_renders_combined_framing(capsys) -> None:
         rc = cli_mod.main(["--statusbar", "--only", "claude,kimi"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert out.startswith("| ")
-    assert "C 10%" in out
-    assert "K 5%" in out
-    assert "O " not in out
+    assert out == "c10% k5%"
 
 
 def test_main_only_unknown_falls_back_to_all(capsys) -> None:
@@ -192,9 +186,7 @@ def test_main_only_unknown_falls_back_to_all(capsys) -> None:
         rc = cli_mod.main(["--statusbar", "--only", "bogus"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "C 1%" in out
-    assert "O 0%" in out
-    assert "K 0%" in out
+    assert out == "c1% o0% k0%"
 
 
 def test_config_statusbar_providers_default() -> None:

@@ -53,7 +53,7 @@ def test_statusbar_is_default(capsys):
         rc = cli_mod.main([])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "C 42%" in out
+    assert "c42%" in out
 
 
 def test_detail_flag(capsys):

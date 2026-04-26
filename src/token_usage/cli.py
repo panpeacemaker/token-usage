@@ -183,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         summary, openai_data, kimi_data = _build_summary(cfg, providers)
     except Exception as e:
         print(f"err: {type(e).__name__}: {e}", file=sys.stderr)
-        print("| C err ", end="")
+        print("c err", end="")
         return 1
 
     sel = set(providers)

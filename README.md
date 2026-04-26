@@ -35,21 +35,24 @@ The installer:
 ## Usage
 
 ```sh
-token-usage --statusbar                  # compact: "| C 23% w 41% @14:30 | O 0% @19:54 | K 0% @21:54 "
-token-usage --statusbar --only claude    # just one provider, bare (no leading "| ")
-token-usage --statusbar --only chatgpt   # ditto for chatgpt
-token-usage --statusbar --only kimi      # ditto for kimi
-token-usage --statusbar --only claude,kimi   # subset
+token-usage --statusbar                  # compact: "c23% o0%w100%@Tue21:28 k0%"
+token-usage --statusbar --only claude    # "c23%"
+token-usage --statusbar --only chatgpt   # "o0%w100%@Tue21:28"
+token-usage --statusbar --only kimi      # "k0%"
+token-usage --statusbar --only claude,kimi   # "c23% k0%"
 token-usage --detail                     # multi-line detail (also honours --only)
 token-usage --json                       # raw JSON (also honours --only)
 token-usage --no-cache                   # bypass output cache
 token-usage --version                    # print version
 ```
 
+Compact format: `<letter><pct>%[w<week_pct>%@<weekday><HH:MM>]`, segments
+space-separated. The `w...` warning suffix only appears when the weekly window
+hits the 85% threshold; the 5-hour reset is intentionally omitted from the
+compact view (use `--detail` for it).
+
 `--only PROVIDER[,PROVIDER...]` accepts `claude`, `chatgpt`, `kimi` (or single-letter
 `c`, `o`, `k`) and skips both the network fetch *and* the rendering for everything else.
-When `--only` selects exactly one provider the leading `| ` / trailing space framing is
-dropped, so each invocation can be wired up as its own bar plugin.
 
 The `_source` field in `--json` output shows which data source won the Claude lookup:
 `statusline`, `oauth`, `local`, `statusline-stale`, or `none`.
@@ -62,9 +65,9 @@ separately if you want one column per provider instead of a combined string:
 
 | Script | Output |
 | --- | --- |
-| `sb-claude-usage`  | `C 56% @21:10` |
-| `sb-chatgpt-usage` | `O 0% w 100% @00:09` |
-| `sb-kimi-usage`    | `K 0% @21:54` |
+| `sb-claude-usage`  | `c56%` |
+| `sb-chatgpt-usage` | `o0%w100%@Tue21:28` |
+| `sb-kimi-usage`    | `k0%` |
 
 Or pin the default set globally in `config.toml`:
 
