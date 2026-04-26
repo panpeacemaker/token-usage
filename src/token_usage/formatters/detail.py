@@ -3,6 +3,8 @@ from __future__ import annotations
 import time as _time
 from datetime import datetime, timezone
 
+DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━"
+
 
 def _fmt_local_time(iso_dt: datetime | str | None) -> str:
     if iso_dt is None:
@@ -40,13 +42,13 @@ def _fmt_age_seconds(seconds: float) -> str:
     return f"{seconds // 3600}h{(seconds % 3600) // 60}m"
 
 
-def format_detail(summary: dict, openai: dict | None = None, kimi: dict | None = None) -> str:
+def _claude_section(summary: dict) -> list[str]:
     lines: list[str] = []
     sub = summary.get("subscription_type", "unknown")
     tier = summary.get("rate_limit_tier", "unknown")
     stale_marker = " [STALE]" if summary.get("_stale") else ""
     lines.append(f"Claude ({sub}) — {tier}{stale_marker}")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append(DIVIDER)
 
     if summary.get("_stale"):
         reason = summary.get("_stale_reason", "unknown")
@@ -104,34 +106,45 @@ def format_detail(summary: dict, openai: dict | None = None, kimi: dict | None =
         if wk_toks or wk_msgs:
             lines.append(f"  this week: {wk_msgs} msgs / {_fmt_int(wk_toks)} tokens")
 
-    lines.append("")
-    lines.append("🟢 ChatGPT Plus")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
-    if openai:
-        if openai.get("available"):
-            primary_reset = _fmt_local_time(_epoch_to_dt(openai.get("primary_reset_at")))
-            weekly_reset = _fmt_local_time(_epoch_to_dt(openai.get("weekly_reset_at")))
-            lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
-            if openai.get("weekly_reset_at") is not None or openai.get("weekly_pct"):
-                lines.append(f"  weekly:  {openai.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
-            lines.append(f"  review:  {openai.get('review_pct', 0):5.1f}%")
-        else:
-            lines.append(f"  ⚠ unavailable: {openai.get('error', 'not configured')}")
-    else:
-        lines.append("  ⚠ unavailable: not configured")
+    return lines
 
-    lines.append("")
-    lines.append("🟣 Kimi Code")
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━")
-    if kimi:
-        if kimi.get("available"):
-            primary_reset = _fmt_local_time(_epoch_to_dt(kimi.get("primary_reset_at")))
-            weekly_reset = _fmt_local_time(_epoch_to_dt(kimi.get("weekly_reset_at")))
-            lines.append(f"  5-hour:  {kimi.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
-            lines.append(f"  weekly:  {kimi.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
-        else:
-            lines.append(f"  ⚠ unavailable: {kimi.get('error', 'not configured')}")
-    else:
-        lines.append("  ⚠ unavailable: not configured")
 
-    return "\n".join(lines)
+def _openai_section(openai: dict) -> list[str]:
+    lines: list[str] = ["🟢 ChatGPT Plus", DIVIDER]
+    if openai.get("available"):
+        primary_reset = _fmt_local_time(_epoch_to_dt(openai.get("primary_reset_at")))
+        weekly_reset = _fmt_local_time(_epoch_to_dt(openai.get("weekly_reset_at")))
+        lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
+        if openai.get("weekly_reset_at") is not None or openai.get("weekly_pct"):
+            lines.append(f"  weekly:  {openai.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+        lines.append(f"  review:  {openai.get('review_pct', 0):5.1f}%")
+    else:
+        lines.append(f"  ⚠ unavailable: {openai.get('error', 'not configured')}")
+    return lines
+
+
+def _kimi_section(kimi: dict) -> list[str]:
+    lines: list[str] = ["🟣 Kimi Code", DIVIDER]
+    if kimi.get("available"):
+        primary_reset = _fmt_local_time(_epoch_to_dt(kimi.get("primary_reset_at")))
+        weekly_reset = _fmt_local_time(_epoch_to_dt(kimi.get("weekly_reset_at")))
+        lines.append(f"  5-hour:  {kimi.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
+        lines.append(f"  weekly:  {kimi.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+    else:
+        lines.append(f"  ⚠ unavailable: {kimi.get('error', 'not configured')}")
+    return lines
+
+
+def format_detail(
+    summary: dict | None = None,
+    openai: dict | None = None,
+    kimi: dict | None = None,
+) -> str:
+    sections: list[list[str]] = []
+    if summary:
+        sections.append(_claude_section(summary))
+    if openai is not None:
+        sections.append(_openai_section(openai))
+    if kimi is not None:
+        sections.append(_kimi_section(kimi))
+    return "\n\n".join("\n".join(section) for section in sections)

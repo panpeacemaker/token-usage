@@ -192,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     kimi_for_render = kimi_data if "kimi" in sel else None
 
     if args.detail:
-        print(detail.format_detail(summary_for_render or {}, openai_for_render, kimi_for_render))
+        print(detail.format_detail(summary_for_render, openai_for_render, kimi_for_render))
     elif args.json:
         print(json_out.format_json(summary_for_render or {}, openai_for_render, kimi_for_render))
     else:

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-WEEKLY_WARN_THRESHOLD = 85.0
+WEEKLY_WARN_THRESHOLD = 80.0
+WEEKLY_MAXED_PCT = 100.0
 
 
 def _coerce_dt(value) -> datetime | None:
@@ -33,6 +34,23 @@ def _local_day_hhmm(value) -> str:
         return ""
 
 
+def _local_hhmm(value) -> str:
+    dt = _coerce_dt(value)
+    if dt is None:
+        return ""
+    try:
+        return dt.astimezone().strftime("%H:%M")
+    except (ValueError, OSError):
+        return ""
+
+
+def _primary_reset_suffix(primary_reset, week_pct: float) -> str:
+    if week_pct >= WEEKLY_MAXED_PCT:
+        return ""
+    hhmm = _local_hhmm(primary_reset)
+    return f"@{hhmm}" if hhmm else ""
+
+
 def _weekly_warn_suffix(week_pct: float, weekly_reset, threshold: float) -> str:
     if week_pct < threshold:
         return ""
@@ -52,6 +70,7 @@ def _format_claude_segment(summary: dict, weekly_warn_threshold: float) -> str:
     stale_marker = "*" if summary.get("_stale") else ""
 
     out = f"c{c_5h:.0f}%{stale_marker}"
+    out += _primary_reset_suffix(summary.get("five_hour_resets_at"), c_week)
     out += _weekly_warn_suffix(c_week, summary.get("seven_day_resets_at"), weekly_warn_threshold)
     return out
 
@@ -62,6 +81,7 @@ def _format_openai_segment(openai: dict, weekly_warn_threshold: float) -> str:
     o_5h = float(openai.get("primary_pct", 0) or 0)
     o_week = float(openai.get("weekly_pct", 0) or 0)
     out = f"o{o_5h:.0f}%"
+    out += _primary_reset_suffix(openai.get("primary_reset_at"), o_week)
     out += _weekly_warn_suffix(o_week, openai.get("weekly_reset_at"), weekly_warn_threshold)
     return out
 
@@ -72,6 +92,7 @@ def _format_kimi_segment(kimi: dict, weekly_warn_threshold: float) -> str:
     k_5h = float(kimi.get("primary_pct", 0) or 0)
     k_week = float(kimi.get("weekly_pct", 0) or 0)
     out = f"k{k_5h:.0f}%"
+    out += _primary_reset_suffix(kimi.get("primary_reset_at"), k_week)
     out += _weekly_warn_suffix(k_week, kimi.get("weekly_reset_at"), weekly_warn_threshold)
     return out
 

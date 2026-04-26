@@ -87,3 +87,79 @@ def test_openai_unavailable():
     openai = {"available": False, "error": "cookie extraction failed"}
     out = format_detail(_base_summary(), openai)
     assert "cookie extraction failed" in out
+
+
+def test_kimi_section_rendered_when_provided():
+    kimi = {
+        "available": True,
+        "primary_pct": 18.0,
+        "weekly_pct": 10.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+    }
+    out = format_detail(_base_summary(), None, kimi)
+    assert "Kimi Code" in out
+    assert "5-hour:" in out
+    assert "18.0%" in out
+    assert "weekly:" in out
+    assert "10.0%" in out
+
+
+def test_kimi_unavailable():
+    kimi = {"available": False, "error": "logged out"}
+    out = format_detail(_base_summary(), None, kimi)
+    assert "Kimi Code" in out
+    assert "logged out" in out
+
+
+def test_only_kimi_skips_claude_and_chatgpt_sections():
+    kimi = {
+        "available": True,
+        "primary_pct": 25.0,
+        "weekly_pct": 12.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+    }
+    out = format_detail(None, None, kimi)
+    assert "Claude" not in out
+    assert "ChatGPT" not in out
+    assert "Kimi Code" in out
+    assert "25.0%" in out
+
+
+def test_only_claude_skips_chatgpt_and_kimi_sections():
+    out = format_detail(_base_summary(), None, None)
+    assert "Claude" in out
+    assert "ChatGPT" not in out
+    assert "Kimi Code" not in out
+
+
+def test_only_chatgpt_skips_claude_and_kimi_sections():
+    openai = {"available": True, "primary_pct": 30.0, "review_pct": 5.0}
+    out = format_detail(None, openai, None)
+    assert "Claude" not in out
+    assert "ChatGPT Plus" in out
+    assert "Kimi Code" not in out
+    assert "30.0%" in out
+
+
+def test_empty_summary_dict_skips_claude_section():
+    out = format_detail({}, {"available": False, "error": "x"}, None)
+    assert "Claude" not in out
+    assert "ChatGPT Plus" in out
+
+
+def test_no_args_returns_empty_string():
+    assert format_detail() == ""
+    assert format_detail(None, None, None) == ""
+
+
+def test_sections_separated_by_blank_line():
+    openai = {"available": True, "primary_pct": 30.0, "review_pct": 5.0}
+    kimi = {"available": True, "primary_pct": 18.0, "weekly_pct": 10.0}
+    out = format_detail(_base_summary(), openai, kimi)
+    assert "\n\n" in out
+    parts = out.split("\n\n")
+    assert any("Claude" in p for p in parts)
+    assert any("ChatGPT" in p for p in parts)
+    assert any("Kimi" in p for p in parts)
