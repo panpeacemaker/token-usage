@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from token_usage.openai_chat import chatgpt_wham as wham_mod
 from token_usage.openai_chat.chatgpt_wham import ChatGPTUsage, fetch_chatgpt
 
 
@@ -37,11 +38,11 @@ def _mock_modules():
             return mock_bc3
         raise ImportError(name)
 
-    return mock_requests, mock_bc3, import_side_effect
+    return mock_requests, import_side_effect
 
 
 def test_successful_fetch():
-    mock_requests, mock_bc3, import_side = _mock_modules()
+    mock_requests, import_side = _mock_modules()
     session = MagicMock()
     mock_requests.Session.return_value = session
 
@@ -54,22 +55,59 @@ def test_successful_fetch():
     wham_resp.json.return_value = {
         "rate_limit": {
             "primary_window": {"used_percent": 42.5, "reset_at": 1700000000},
+            "secondary_window": {"used_percent": 80.0, "reset_at": 1700604800},
         },
         "code_review_rate_limit": {"used_percent": 10.0, "reset_at": 1700001000},
     }
 
     session.get.side_effect = [session_resp, wham_resp]
 
-    with patch("importlib.import_module", side_effect=import_side):
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
+    ):
         result = fetch_chatgpt("firefox")
 
     assert result.available
     assert result.primary_pct == 42.5
+    assert result.primary_reset_at == 1700000000
+    assert result.weekly_pct == 80.0
+    assert result.weekly_reset_at == 1700604800
     assert result.review_pct == 10.0
 
 
+def test_secondary_window_missing_keeps_weekly_zero():
+    mock_requests, import_side = _mock_modules()
+    session = MagicMock()
+    mock_requests.Session.return_value = session
+
+    session_resp = MagicMock()
+    session_resp.status_code = 200
+    session_resp.json.return_value = {"accessToken": "tok"}
+
+    wham_resp = MagicMock()
+    wham_resp.status_code = 200
+    wham_resp.json.return_value = {
+        "rate_limit": {"primary_window": {"used_percent": 5.0, "reset_at": 1700000000}},
+        "code_review_rate_limit": None,
+    }
+
+    session.get.side_effect = [session_resp, wham_resp]
+
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
+    ):
+        result = fetch_chatgpt()
+
+    assert result.available
+    assert result.weekly_pct == 0.0
+    assert result.weekly_reset_at is None
+    assert result.review_pct == 0.0
+
+
 def test_session_http_error():
-    mock_requests, mock_bc3, import_side = _mock_modules()
+    mock_requests, import_side = _mock_modules()
     session = MagicMock()
     mock_requests.Session.return_value = session
 
@@ -77,7 +115,10 @@ def test_session_http_error():
     session_resp.status_code = 403
     session.get.return_value = session_resp
 
-    with patch("importlib.import_module", side_effect=import_side):
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
+    ):
         result = fetch_chatgpt()
 
     assert not result.available
@@ -85,7 +126,7 @@ def test_session_http_error():
 
 
 def test_no_access_token():
-    mock_requests, mock_bc3, import_side = _mock_modules()
+    mock_requests, import_side = _mock_modules()
     session = MagicMock()
     mock_requests.Session.return_value = session
 
@@ -94,11 +135,31 @@ def test_no_access_token():
     session_resp.json.return_value = {}
     session.get.return_value = session_resp
 
-    with patch("importlib.import_module", side_effect=import_side):
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
+    ):
         result = fetch_chatgpt()
 
     assert not result.available
     assert "access token" in result.error
+
+
+def test_cookie_discovery_failure_propagates():
+    _, import_side = _mock_modules()
+
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(
+            wham_mod,
+            "load_cookies",
+            side_effect=FileNotFoundError("no zen profile contains cookies for chatgpt.com"),
+        ),
+    ):
+        result = fetch_chatgpt("zen")
+
+    assert not result.available
+    assert "no zen profile" in result.error
 
 
 def test_chatgpt_usage_has_no_codex_fields():

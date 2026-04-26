@@ -9,7 +9,7 @@ SETTINGS_FILE="${HOME}/.claude/settings.json"
 mkdir -p "$BACKUP_DIR" "$LOCAL_BIN"
 
 echo "==> Backing up old scripts to $BACKUP_DIR"
-for f in ai-usage-calculator sb-ai-usage; do
+for f in ai-usage-calculator sb-ai-usage sb-claude-usage sb-chatgpt-usage sb-kimi-usage; do
     if [ -e "$LOCAL_BIN/$f" ] && [ ! -L "$LOCAL_BIN/$f" ]; then
         cp "$LOCAL_BIN/$f" "$BACKUP_DIR/$f.$(date +%Y%m%d-%H%M%S)"
     fi
@@ -31,8 +31,11 @@ else
         || python3 -m pip install --user --upgrade "$REPO_DIR"
 fi
 
-echo "==> Installing sb-ai-usage wrapper"
-install -m 0755 "$REPO_DIR/scripts/sb-ai-usage" "$LOCAL_BIN/sb-ai-usage"
+echo "==> Installing sb-* wrappers"
+install -m 0755 "$REPO_DIR/scripts/sb-ai-usage"      "$LOCAL_BIN/sb-ai-usage"
+install -m 0755 "$REPO_DIR/scripts/sb-claude-usage"  "$LOCAL_BIN/sb-claude-usage"
+install -m 0755 "$REPO_DIR/scripts/sb-chatgpt-usage" "$LOCAL_BIN/sb-chatgpt-usage"
+install -m 0755 "$REPO_DIR/scripts/sb-kimi-usage"    "$LOCAL_BIN/sb-kimi-usage"
 
 echo "==> Configuring Claude Code statusLine"
 python3 - "$SETTINGS_FILE" <<'PY'

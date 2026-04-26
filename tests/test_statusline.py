@@ -112,6 +112,42 @@ def test_is_still_valid_none_or_unavailable() -> None:
     assert statusline.is_still_valid(statusline.ClaudeUsage(available=False)) is False
 
 
+def test_is_still_valid_stale_file_mtime() -> None:
+    now = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=10.0,
+        five_hour_resets_at=now + timedelta(hours=2),
+        seven_day_pct=5.0,
+        seven_day_resets_at=now + timedelta(days=3),
+    )
+    stale_mtime = now.timestamp() - 7200
+    assert statusline.is_still_valid(usage, now=now, file_mtime=stale_mtime) is False
+
+
+def test_is_still_valid_fresh_file_mtime() -> None:
+    now = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=10.0,
+        five_hour_resets_at=now + timedelta(hours=2),
+        seven_day_pct=5.0,
+        seven_day_resets_at=now + timedelta(days=3),
+    )
+    fresh_mtime = now.timestamp() - 60
+    assert statusline.is_still_valid(usage, now=now, file_mtime=fresh_mtime) is True
+
+
+def test_is_still_valid_no_mtime_skips_check() -> None:
+    now = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=10.0,
+        five_hour_resets_at=now + timedelta(hours=2),
+    )
+    assert statusline.is_still_valid(usage, now=now, file_mtime=None) is True
+
+
 def test_epoch_to_dt_invalid_inputs() -> None:
     assert statusline._epoch_to_dt(None) is None
     assert statusline._epoch_to_dt("not-a-number") is None

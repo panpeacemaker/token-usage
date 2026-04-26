@@ -8,6 +8,7 @@ from ..cache import CACHE_DIR
 from .models import ClaudeUsage
 
 STATUSLINE_CACHE_FILE = CACHE_DIR / "statusline.json"
+STATUSLINE_MAX_AGE_SECONDS = 600  # 10 min; stale file → fall through to OAuth
 
 
 def _epoch_to_dt(value) -> datetime | None:
@@ -52,10 +53,17 @@ def read_statusline_usage(path: Path | None = None) -> ClaudeUsage | None:
     )
 
 
-def is_still_valid(usage: ClaudeUsage | None, now: datetime | None = None) -> bool:
+def is_still_valid(
+    usage: ClaudeUsage | None,
+    now: datetime | None = None,
+    file_mtime: float | None = None,
+    max_file_age_seconds: int = STATUSLINE_MAX_AGE_SECONDS,
+) -> bool:
     if usage is None or not usage.available:
         return False
     now = now or datetime.now(timezone.utc)
+    if file_mtime is not None and (now.timestamp() - file_mtime) > max_file_age_seconds:
+        return False
     if usage.five_hour_resets_at:
         return usage.five_hour_resets_at > now
     if usage.seven_day_resets_at:

@@ -1,0 +1,21 @@
+#!/bin/sh
+. "${HOME}/.local/bin/sb-lib.sh" || exit 1
+
+CLI="token-usage"
+ONLY="chatgpt"
+
+sb_on_left_click() {
+    body=$("$CLI" --detail --only "$ONLY" 2>/dev/null) || {
+        sb_notify "ChatGPT Usage" "failed to fetch"
+        return
+    }
+    sb_notify "ChatGPT Usage" "$body"
+}
+
+sb_on_right_click() {
+    sb_module_help "🟢" "ChatGPT Usage" "Left: details · Right: help"
+}
+
+sb_handle_buttons
+
+"$CLI" --statusbar --only "$ONLY" 2>/dev/null || printf "O err"

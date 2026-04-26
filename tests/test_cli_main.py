@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -31,9 +32,8 @@ def _stub_summary():
 def _enter_patches(stack: ExitStack) -> None:
     stack.enter_context(patch.object(cache_mod, "read", return_value=None))
     stack.enter_context(patch.object(cache_mod, "write"))
-    stack.enter_context(
-        patch.object(statusline_mod, "read_statusline_usage", return_value=_stub_summary())
-    )
+    stack.enter_context(patch.object(statusline_mod, "read_statusline_usage", return_value=_stub_summary()))
+    stack.enter_context(patch.object(cli_mod, "_statusline_mtime", return_value=time.time()))
     stack.enter_context(patch.object(oauth_mod, "fetch_usage"))
     stack.enter_context(
         patch.object(
@@ -89,8 +89,10 @@ def test_no_cache_bypasses(capsys):
 
 
 def test_error_handling(capsys):
-    with patch.object(config_mod, "load", return_value=config_mod.Config()), \
-         patch.object(cli_mod, "_build_summary", side_effect=RuntimeError("boom")):
+    with (
+        patch.object(config_mod, "load", return_value=config_mod.Config()),
+        patch.object(cli_mod, "_build_summary", side_effect=RuntimeError("boom")),
+    ):
         rc = cli_mod.main([])
     assert rc == 1
     err = capsys.readouterr().err

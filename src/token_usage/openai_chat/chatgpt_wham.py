@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from pathlib import Path
+
+from .._cookies import load_cookies
 
 WHAM_URL = "https://chatgpt.com/backend-api/wham/usage"
 SESSION_URL = "https://chatgpt.com/api/auth/session"
+COOKIE_DOMAIN = "chatgpt.com"
 
 
 @dataclass
@@ -14,20 +16,26 @@ class ChatGPTUsage:
     error: str | None = None
     primary_pct: float = 0.0
     primary_reset_at: int | None = None
+    weekly_pct: float = 0.0
+    weekly_reset_at: int | None = None
     review_pct: float = 0.0
     review_reset_at: int | None = None
 
 
-def _zen_cookie_file() -> Path | None:
-    """Find the cookies.sqlite in ~/.zen/<profile>/ — prefer 'Default' profiles."""
-    zen_root = Path.home() / ".zen"
-    if not zen_root.exists():
+def _pct(obj) -> float:
+    v = obj.get("used_percent") if isinstance(obj, dict) else None
+    try:
+        return float(v) if v is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _reset(obj) -> int | None:
+    v = obj.get("reset_at") if isinstance(obj, dict) else None
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
         return None
-    candidates = sorted(
-        zen_root.glob("*/cookies.sqlite"),
-        key=lambda p: (0 if "Default" in p.parent.name else 1, p.parent.name),
-    )
-    return candidates[0] if candidates else None
 
 
 def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
@@ -36,25 +44,14 @@ def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
     except ImportError:
         return ChatGPTUsage(available=False, error="curl_cffi not installed")
     try:
-        browser_cookie3 = importlib.import_module("browser_cookie3")
+        importlib.import_module("browser_cookie3")
     except ImportError:
         return ChatGPTUsage(available=False, error="browser_cookie3 not installed")
 
     try:
-        browser_lower = browser.lower()
-        if browser_lower == "zen":
-            zen_file = _zen_cookie_file()
-            if zen_file is None:
-                return ChatGPTUsage(available=False, error="Zen profile not found")
-            cj = browser_cookie3.firefox(cookie_file=str(zen_file), domain_name="chatgpt.com")
-        else:
-            cj_func = {
-                "firefox": browser_cookie3.firefox,
-                "chrome": browser_cookie3.chrome,
-                "chromium": browser_cookie3.chromium,
-                "brave": browser_cookie3.brave,
-            }.get(browser_lower, browser_cookie3.firefox)
-            cj = cj_func(domain_name="chatgpt.com")
+        cj = load_cookies(browser, COOKIE_DOMAIN)
+    except FileNotFoundError as e:
+        return ChatGPTUsage(available=False, error=str(e))
     except Exception as e:
         return ChatGPTUsage(available=False, error=f"cookie extraction failed: {e}")
 
@@ -83,26 +80,15 @@ def fetch_chatgpt(browser: str = "firefox") -> ChatGPTUsage:
 
     rl = data.get("rate_limit") or {}
     primary = rl.get("primary_window") or {}
+    secondary = rl.get("secondary_window") or {}
     code = data.get("code_review_rate_limit") or {}
-
-    def pct(obj) -> float:
-        v = obj.get("used_percent") if isinstance(obj, dict) else None
-        try:
-            return float(v) if v is not None else 0.0
-        except (TypeError, ValueError):
-            return 0.0
-
-    def reset(obj) -> int | None:
-        v = obj.get("reset_at") if isinstance(obj, dict) else None
-        try:
-            return int(v) if v is not None else None
-        except (TypeError, ValueError):
-            return None
 
     return ChatGPTUsage(
         available=True,
-        primary_pct=pct(primary),
-        primary_reset_at=reset(primary),
-        review_pct=pct(code),
-        review_reset_at=reset(code),
+        primary_pct=_pct(primary),
+        primary_reset_at=_reset(primary),
+        weekly_pct=_pct(secondary),
+        weekly_reset_at=_reset(secondary),
+        review_pct=_pct(code),
+        review_reset_at=_reset(code),
     )

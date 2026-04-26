@@ -47,6 +47,9 @@ packages = ["src/token_usage"]
 include = [
   "src/token_usage",
   "scripts/sb-ai-usage",
+  "scripts/sb-claude-usage",
+  "scripts/sb-chatgpt-usage",
+  "scripts/sb-kimi-usage",
   "README.md",
   "LICENSE",
   "config.example.toml",

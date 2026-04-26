@@ -1,0 +1,21 @@
+#!/bin/sh
+. "${HOME}/.local/bin/sb-lib.sh" || exit 1
+
+CLI="token-usage"
+ONLY="kimi"
+
+sb_on_left_click() {
+    body=$("$CLI" --detail --only "$ONLY" 2>/dev/null) || {
+        sb_notify "Kimi Usage" "failed to fetch"
+        return
+    }
+    sb_notify "Kimi Usage" "$body"
+}
+
+sb_on_right_click() {
+    sb_module_help "🟣" "Kimi Usage" "Left: details · Right: help"
+}
+
+sb_handle_buttons
+
+"$CLI" --statusbar --only "$ONLY" 2>/dev/null || printf "K err"

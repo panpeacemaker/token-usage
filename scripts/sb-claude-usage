@@ -1,0 +1,29 @@
+#!/bin/sh
+. "${HOME}/.local/bin/sb-lib.sh" || exit 1
+
+CLI="token-usage"
+ONLY="claude"
+
+sb_on_left_click() {
+    body=$("$CLI" --detail --only "$ONLY" 2>/dev/null) || {
+        sb_notify "Claude Usage" "failed to fetch"
+        return
+    }
+    sb_notify "Claude Usage" "$body"
+}
+
+sb_on_middle_click() {
+    if command -v claude-monitor >/dev/null 2>&1; then
+        sb_terminal claude-monitor
+    else
+        sb_notify "Claude Usage" "claude-monitor not installed"
+    fi
+}
+
+sb_on_right_click() {
+    sb_module_help "🟠" "Claude Usage" "Left: details · Middle: claude-monitor · Right: help"
+}
+
+sb_handle_buttons
+
+"$CLI" --statusbar --only "$ONLY" 2>/dev/null || printf "C err"

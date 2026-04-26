@@ -7,7 +7,7 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "token-usage"
 CACHE_FILE = CACHE_DIR / "summary.json"
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 
 
 def read_raw() -> dict | None:

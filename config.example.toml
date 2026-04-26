@@ -16,5 +16,14 @@ messages_weekly = 250
 enabled = true
 browser = "zen"
 
+[kimi]
+enabled = true
+browser = "zen"
+
 [cache]
 ttl_seconds = 300
+
+[statusbar]
+# Default set of providers shown in --statusbar / --detail / --json
+# when --only is not passed. CLI flag overrides this.
+providers = ["claude", "chatgpt", "kimi"]
