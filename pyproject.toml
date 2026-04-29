@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "token-usage"
-version = "0.1.0"
-description = "Claude Code and ChatGPT Plus usage tracker"
+version = "0.2.0"
+description = "Claude Code, ChatGPT Plus, Kimi Code, and OpenCode usage tracker"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -50,6 +50,8 @@ include = [
   "scripts/sb-claude-usage",
   "scripts/sb-chatgpt-usage",
   "scripts/sb-kimi-usage",
+  "scripts/sb-opencode-usage",
+  "scripts/sb-opencode-go-usage",
   "README.md",
   "LICENSE",
   "config.example.toml",

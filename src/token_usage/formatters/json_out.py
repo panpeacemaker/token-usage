@@ -10,9 +10,21 @@ def _default(o):
     raise TypeError(f"not serializable: {type(o)}")
 
 
-def format_json(summary: dict, openai: dict | None = None, kimi: dict | None = None) -> str:
+def format_json(
+    summary: dict,
+    openai: dict | None = None,
+    kimi: dict | None = None,
+    opencode: dict | None = None,
+    opencode_go: dict | None = None,
+) -> str:
     return json.dumps(
-        {"claude": summary, "openai": openai, "kimi": kimi},
+        {
+            "claude": summary,
+            "openai": openai,
+            "kimi": kimi,
+            "opencode": opencode,
+            "opencode_go": opencode_go,
+        },
         indent=2,
         default=_default,
     )

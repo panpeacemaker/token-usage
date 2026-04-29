@@ -30,7 +30,7 @@ def _stub_summary():
 
 
 def _enter_patches(stack: ExitStack) -> None:
-    stack.enter_context(patch.object(cache_mod, "read", return_value=None))
+    stack.enter_context(patch.object(cache_mod, "read_raw", return_value=None))
     stack.enter_context(patch.object(cache_mod, "write"))
     stack.enter_context(patch.object(statusline_mod, "read_statusline_usage", return_value=_stub_summary()))
     stack.enter_context(patch.object(cli_mod, "_statusline_mtime", return_value=time.time()))

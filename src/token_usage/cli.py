@@ -4,9 +4,10 @@ import argparse
 import sys
 from dataclasses import asdict
 
-from . import cache
+from . import _normalize, cache
 from . import config as cfg_mod
-from .claude import limits as limits_mod, local_summary, oauth_usage, statusline
+from .claude import limits as limits_mod
+from .claude import local_summary, oauth_usage, statusline
 from .claude.models import ClaudeUsage
 from .formatters import detail, json_out, statusbar
 
@@ -16,7 +17,7 @@ def _fetch_openai(cfg: cfg_mod.Config) -> dict | None:
         return None
     from .openai_chat.chatgpt_wham import fetch_chatgpt
 
-    return asdict(fetch_chatgpt(cfg.openai_browser))
+    return _normalize.normalize_windows(asdict(fetch_chatgpt(cfg.openai_browser)), _normalize.OPENAI_WINDOW_FIELDS)
 
 
 def _fetch_kimi(cfg: cfg_mod.Config) -> dict | None:
@@ -24,7 +25,45 @@ def _fetch_kimi(cfg: cfg_mod.Config) -> dict | None:
         return None
     from .kimi.usage import fetch_kimi
 
-    return asdict(fetch_kimi(cfg.kimi_browser))
+    return _normalize.normalize_windows(asdict(fetch_kimi(cfg.kimi_browser)), _normalize.KIMI_WINDOW_FIELDS)
+
+
+def _fetch_opencode(cfg: cfg_mod.Config) -> dict | None:
+    if not cfg.opencode_enabled:
+        return None
+    from pathlib import Path
+
+    from .opencode.usage import DEFAULT_DB_PATH, fetch_opencode
+
+    db_path = Path(cfg.opencode_db_path) if cfg.opencode_db_path else DEFAULT_DB_PATH
+    result = fetch_opencode(
+        provider_id=cfg.opencode_provider_id,
+        db_path=db_path,
+        primary_window_hours=cfg.opencode_primary_window_hours,
+        weekly_window_days=cfg.opencode_weekly_window_days,
+        primary_limit_tokens=cfg.opencode_primary_limit_tokens,
+        weekly_limit_tokens=cfg.opencode_weekly_limit_tokens,
+    )
+    return _normalize.normalize_windows(asdict(result), _normalize.OPENCODE_WINDOW_FIELDS)
+
+
+def _fetch_opencode_go(cfg: cfg_mod.Config) -> dict | None:
+    if not cfg.opencode_go_enabled:
+        return None
+    from pathlib import Path
+
+    from .opencode.usage import DEFAULT_DB_PATH, fetch_opencode
+
+    db_path = Path(cfg.opencode_db_path) if cfg.opencode_db_path else DEFAULT_DB_PATH
+    result = fetch_opencode(
+        provider_id="opencode-go",
+        db_path=db_path,
+        primary_window_hours=cfg.opencode_go_primary_window_hours,
+        weekly_window_days=cfg.opencode_go_weekly_window_days,
+        primary_limit_tokens=cfg.opencode_go_primary_limit_tokens,
+        weekly_limit_tokens=cfg.opencode_go_weekly_limit_tokens,
+    )
+    return _normalize.normalize_windows(asdict(result), _normalize.OPENCODE_WINDOW_FIELDS)
 
 
 def _gather_sources(
@@ -109,6 +148,10 @@ def _cache_has_provider(payload: dict | None, name: str) -> bool:
         return payload.get("openai") is not None
     if name == "kimi":
         return payload.get("kimi") is not None
+    if name == "opencode":
+        return payload.get("opencode") is not None
+    if name == "opencode-go":
+        return payload.get("opencode_go") is not None
     return False
 
 
@@ -120,35 +163,89 @@ def _providers_to_actually_fetch(cfg: cfg_mod.Config, selected: set[str]) -> set
         fetched.add("chatgpt")
     if "kimi" in selected and cfg.kimi_enabled:
         fetched.add("kimi")
+    if "opencode" in selected and cfg.opencode_enabled:
+        fetched.add("opencode")
+    if "opencode-go" in selected and cfg.opencode_go_enabled:
+        fetched.add("opencode-go")
     return fetched
 
 
 def _build_summary(
     cfg: cfg_mod.Config, providers: tuple[str, ...] | None = None
-) -> tuple[dict, dict | None, dict | None]:
+) -> tuple[dict, dict | None, dict | None, dict | None, dict | None]:
     selected = set(providers) if providers else set(cfg_mod.ALL_PROVIDERS)
-    fetched = _providers_to_actually_fetch(cfg, selected)
-    fresh_cache = cache.read(cfg.cache_ttl_seconds)
-    if fresh_cache is not None and all(_cache_has_provider(fresh_cache, p) for p in fetched):
-        return (
-            fresh_cache.get("summary", {}),
-            fresh_cache.get("openai"),
-            fresh_cache.get("kimi"),
-        )
+    fetchable = _providers_to_actually_fetch(cfg, selected)
+    ttl = cfg.cache_ttl_seconds
 
-    existing = fresh_cache or cache.read_raw() or {}
+    existing = cache.read_raw() or {}
+    fetched: set[str] = set()
 
     if "claude" in selected:
-        local_usage, local_detail, statusline_usage = _gather_sources(cfg)
-        claude_usage, source, oauth_error = _select_claude_source(statusline_usage, local_usage)
-        summary = _assemble_summary(claude_usage, source, oauth_error, local_detail)
+        if cache.is_provider_fresh(existing, "claude", ttl) and _cache_has_provider(existing, "claude"):
+            summary = existing.get("summary", {})
+        else:
+            local_usage, local_detail, statusline_usage = _gather_sources(cfg)
+            claude_usage, source, oauth_error = _select_claude_source(statusline_usage, local_usage)
+            summary = _assemble_summary(claude_usage, source, oauth_error, local_detail)
+            fetched.add("claude")
     else:
         summary = existing.get("summary") or _empty_claude_summary()
 
-    openai_data = _fetch_openai(cfg) if "chatgpt" in selected else existing.get("openai")
-    kimi_data = _fetch_kimi(cfg) if "kimi" in selected else existing.get("kimi")
-    cache.write({"summary": summary, "openai": openai_data, "kimi": kimi_data})
-    return summary, openai_data, kimi_data
+    if "chatgpt" in fetchable:
+        if cache.is_provider_fresh(existing, "chatgpt", ttl) and _cache_has_provider(existing, "chatgpt"):
+            openai_data = _normalize.normalize_windows(existing.get("openai"), _normalize.OPENAI_WINDOW_FIELDS)
+        else:
+            openai_data = _fetch_openai(cfg)
+            fetched.add("chatgpt")
+    else:
+        openai_data = _normalize.normalize_windows(existing.get("openai"), _normalize.OPENAI_WINDOW_FIELDS)
+
+    if "kimi" in fetchable:
+        if cache.is_provider_fresh(existing, "kimi", ttl) and _cache_has_provider(existing, "kimi"):
+            kimi_data = _normalize.normalize_windows(existing.get("kimi"), _normalize.KIMI_WINDOW_FIELDS)
+        else:
+            kimi_data = _fetch_kimi(cfg)
+            fetched.add("kimi")
+    else:
+        kimi_data = _normalize.normalize_windows(existing.get("kimi"), _normalize.KIMI_WINDOW_FIELDS)
+
+    if "opencode" in fetchable:
+        if cache.is_provider_fresh(existing, "opencode", ttl) and _cache_has_provider(existing, "opencode"):
+            opencode_data = _normalize.normalize_windows(
+                existing.get("opencode"), _normalize.OPENCODE_WINDOW_FIELDS
+            )
+        else:
+            opencode_data = _fetch_opencode(cfg)
+            fetched.add("opencode")
+    else:
+        opencode_data = _normalize.normalize_windows(
+            existing.get("opencode"), _normalize.OPENCODE_WINDOW_FIELDS
+        )
+
+    if "opencode-go" in fetchable:
+        if cache.is_provider_fresh(existing, "opencode-go", ttl) and _cache_has_provider(existing, "opencode-go"):
+            opencode_go_data = _normalize.normalize_windows(
+                existing.get("opencode_go"), _normalize.OPENCODE_WINDOW_FIELDS
+            )
+        else:
+            opencode_go_data = _fetch_opencode_go(cfg)
+            fetched.add("opencode-go")
+    else:
+        opencode_go_data = _normalize.normalize_windows(
+            existing.get("opencode_go"), _normalize.OPENCODE_WINDOW_FIELDS
+        )
+
+    cache.write(
+        {
+            "summary": summary,
+            "openai": openai_data,
+            "kimi": kimi_data,
+            "opencode": opencode_data,
+            "opencode_go": opencode_go_data,
+        },
+        fetched_providers=fetched,
+    )
+    return summary, openai_data, kimi_data, opencode_data, opencode_go_data
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         user_supplied_only = False
 
     try:
-        summary, openai_data, kimi_data = _build_summary(cfg, providers)
+        summary, openai_data, kimi_data, opencode_data, opencode_go_data = _build_summary(cfg, providers)
     except Exception as e:
         print(f"err: {type(e).__name__}: {e}", file=sys.stderr)
         print("c err", end="")
@@ -190,11 +287,29 @@ def main(argv: list[str] | None = None) -> int:
     summary_for_render = summary if "claude" in sel else None
     openai_for_render = openai_data if "chatgpt" in sel else None
     kimi_for_render = kimi_data if "kimi" in sel else None
+    opencode_for_render = opencode_data if "opencode" in sel else None
+    opencode_go_for_render = opencode_go_data if "opencode-go" in sel else None
 
     if args.detail:
-        print(detail.format_detail(summary_for_render, openai_for_render, kimi_for_render))
+        print(
+            detail.format_detail(
+                summary_for_render,
+                openai_for_render,
+                kimi_for_render,
+                opencode_for_render,
+                opencode_go_for_render,
+            )
+        )
     elif args.json:
-        print(json_out.format_json(summary_for_render or {}, openai_for_render, kimi_for_render))
+        print(
+            json_out.format_json(
+                summary_for_render or {},
+                openai_for_render,
+                kimi_for_render,
+                opencode_for_render,
+                opencode_go_for_render,
+            )
+        )
     else:
         bare = user_supplied_only and len(providers) == 1
         print(
@@ -202,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
                 summary_for_render or {},
                 openai_for_render,
                 kimi_for_render,
+                opencode_for_render,
+                opencode_go_for_render,
                 bare=bare,
             ),
             end="",

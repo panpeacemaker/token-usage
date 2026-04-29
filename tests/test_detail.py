@@ -163,3 +163,61 @@ def test_sections_separated_by_blank_line():
     assert any("Claude" in p for p in parts)
     assert any("ChatGPT" in p for p in parts)
     assert any("Kimi" in p for p in parts)
+
+
+def test_opencode_section_rendered_when_provided():
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "primary_pct": 18.0,
+        "weekly_pct": 12.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+        "primary_tokens": 18000,
+        "primary_limit_tokens": 100000,
+        "weekly_tokens": 60000,
+        "weekly_limit_tokens": 500000,
+    }
+    out = format_detail(_base_summary(), None, None, opencode)
+    assert "OpenCode" in out
+    assert "18.0%" in out
+    assert "12.0%" in out
+    assert "18,000" in out
+    assert "60,000" in out
+
+
+def test_opencode_unavailable():
+    opencode = {"available": False, "error": "no db"}
+    out = format_detail(_base_summary(), None, None, opencode)
+    assert "OpenCode" in out
+    assert "no db" in out
+
+
+def test_only_opencode_skips_other_sections():
+    opencode = {"available": True, "provider_id": "opencode", "primary_pct": 25.0, "weekly_pct": 5.0}
+    out = format_detail(None, None, None, opencode)
+    assert "Claude" not in out
+    assert "ChatGPT" not in out
+    assert "Kimi Code" not in out
+    assert "OpenCode" in out
+
+
+def test_opencode_go_section_rendered_when_provided():
+    opencode_go = {
+        "available": True,
+        "provider_id": "opencode-go",
+        "primary_pct": 25.0,
+        "weekly_pct": 8.0,
+    }
+    out = format_detail(None, None, None, None, opencode_go)
+    assert "OpenCode Go" in out
+    assert "opencode-go" in out
+    assert "25.0%" in out
+
+
+def test_opencode_and_go_both_rendered_in_detail():
+    opencode = {"available": True, "provider_id": "opencode", "primary_pct": 5.0, "weekly_pct": 1.0}
+    opencode_go = {"available": True, "provider_id": "opencode-go", "primary_pct": 25.0, "weekly_pct": 8.0}
+    out = format_detail(None, None, None, opencode, opencode_go)
+    assert "OpenCode (opencode)" in out
+    assert "OpenCode Go (opencode-go)" in out

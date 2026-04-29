@@ -78,14 +78,17 @@ def test_fresh_output_cache_short_circuits() -> None:
     cached = {
         "summary": {"available": True, "five_hour_pct": 55, "_source": "oauth"},
         "openai": None,
+        "fetched_at": time.time(),
+        "_provider_fetched_at": {"claude": time.time()},
     }
     with (
-        patch.object(cache_mod, "read", return_value=cached),
+        patch.object(cache_mod, "read_raw", return_value=cached),
+        patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage") as mock_sl,
         patch.object(oauth_mod, "fetch_usage") as mock_oauth,
         patch.object(local_summary_mod, "compute_local") as mock_local,
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["five_hour_pct"] == 55
     mock_sl.assert_not_called()
     mock_oauth.assert_not_called()
@@ -95,14 +98,14 @@ def test_fresh_output_cache_short_circuits() -> None:
 def test_statusline_primary_when_valid_skips_oauth() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage("statusline")),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
         patch.object(oauth_mod, "fetch_usage") as mock_oauth,
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "statusline"
     assert summary["five_hour_pct"] == 42.0
     mock_oauth.assert_not_called()
@@ -112,13 +115,13 @@ def test_oauth_when_statusline_missing() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     oauth_result = _future_usage("oauth")
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=oauth_result),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "oauth"
     assert summary["five_hour_pct"] == 42.0
     assert summary["subscription_type"] == "oauth"
@@ -128,14 +131,14 @@ def test_oauth_when_statusline_file_stale() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     oauth_result = _future_usage("oauth")
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage("statusline")),
         patch.object(cli_mod, "_statusline_mtime", return_value=0.0),
         patch.object(oauth_mod, "fetch_usage", return_value=oauth_result),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "oauth"
     assert summary["five_hour_pct"] == 42.0
 
@@ -144,26 +147,26 @@ def test_oauth_when_statusline_window_expired() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     oauth_result = _future_usage("oauth")
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_past_usage()),
         patch.object(oauth_mod, "fetch_usage", return_value=oauth_result),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "oauth"
 
 
 def test_local_fallback_when_oauth_fails() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "local"
     assert summary["five_hour_pct"] == 10.0
 
@@ -171,13 +174,13 @@ def test_local_fallback_when_oauth_fails() -> None:
 def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_past_usage()),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable()),
         patch.object(local_summary_mod, "compute_local", return_value=_empty_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "statusline-stale"
     assert summary["five_hour_pct"] == 99.0
 
@@ -185,13 +188,13 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
 def test_everything_empty_returns_unavailable() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("credentials not found")),
         patch.object(local_summary_mod, "compute_local", return_value=_empty_local()),
     ):
-        summary, _o, _k = cli_mod._build_summary(cfg)
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "none"
     assert summary["available"] is False
     assert "credentials not found" in summary["error"]
@@ -200,7 +203,7 @@ def test_everything_empty_returns_unavailable() -> None:
 def test_build_summary_writes_cache() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
-        patch.object(cache_mod, "read", return_value=None),
+        patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write") as mock_write,
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage()),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),

@@ -1,7 +1,69 @@
 # token-usage Refactor Notes
 
-**Last updated:** 2026-04-10  
-**Status:** All waves complete — 86 tests passing
+**Last updated:** 2026-04-29
+**Status:** All waves complete — 201 tests passing
+**Version:** 0.2.0
+
+---
+
+## Wave 9 — OpenCode Go provider (2026-04-29) ✅
+
+Added `opencode-go` as a parallel provider next to `opencode` (Zen). Same SQLite
+backend, different `providerID` filter. Statusbar letter: `g`.
+
+- `[opencode-go]` config section (mirrors `[opencode]` schema except no
+  `provider_id` / `db_path` — those are fixed and inherited respectively).
+- Aliases: `g`, `oc-go`, `go`, `opencode-go`.
+- `_build_summary` now returns 5-tuple `(summary, openai, kimi, opencode, opencode_go)`.
+- `cache.py` bumped to `CACHE_VERSION = 9` to add `opencode_go` payload key.
+- New `format_compact(..., opencode_go=...)`, new `_opencode_section(label="OpenCode Go")`.
+- Tests: aliases, alongside-provider rendering, `--only opencode-go`, `--only g`.
+
+---
+
+## Wave 8 — Per-provider cache freshness + OpenCode provider (2026-04-29) ✅
+
+**Bug fixed:** `--only claude` (e.g. via `sb-claude-usage` running every statusbar tick)
+poisoned the cache by rewriting the global `fetched_at` while keeping arbitrarily-old
+ChatGPT/Kimi payloads. The TTL gate then never invalidated those payloads. End state:
+ChatGPT could show a weekly window that reset 8+ hours ago at 100%.
+
+**Fix:**
+- Cache bumped to `CACHE_VERSION = 8`. New `_provider_fetched_at: dict[str, float]`
+  tracks freshness independently per provider.
+- `cache.write(payload, fetched_providers={...})` now stamps **only** the providers
+  actually fetched on this tick, preserving stale stamps for the rest.
+- New `cache.is_provider_fresh(payload, name, ttl)` is the per-provider TTL gate;
+  `cli._build_summary` calls it instead of a single global gate.
+- New `_normalize.normalize_windows(payload, fields, now=...)` rolls expired
+  `*_pct` / `*_reset_at` pairs to `0.0 / None` on both fetch and cache-read paths.
+  Applied to ChatGPT (`primary`/`weekly`/`review`), Kimi (`primary`/`weekly`),
+  and OpenCode (`primary`/`weekly`).
+
+**New provider:** `opencode` (`e` letter). No public OpenCode quota API exists, so
+usage is aggregated from `~/.local/share/opencode/opencode.db` filtered by
+`providerID` into a 5h + 7d rolling window. Percentage = tokens / `*_limit_tokens`
+(configurable). Opt-in via `[opencode] enabled = true`.
+
+**Files touched:**
+- `src/token_usage/cache.py` — `CACHE_VERSION = 8`, `provider_fetched_at`,
+  `is_provider_fresh`, `write(payload, fetched_providers=...)`.
+- `src/token_usage/_normalize.py` — new helper.
+- `src/token_usage/cli.py` — per-provider TTL loop, `_fetch_opencode`,
+  `_build_summary` returns 4-tuple `(summary, openai, kimi, opencode)`.
+- `src/token_usage/config.py` — `[opencode]` schema, `ALL_PROVIDERS` includes
+  `"opencode"`, aliases `e`/`oc`/`zen`/`opencode-zen`.
+- `src/token_usage/opencode/{__init__.py,usage.py}` — `fetch_opencode` SQLite reader.
+- `src/token_usage/formatters/{statusbar.py,detail.py,json_out.py}` — new `e` segment.
+- `tests/test_cache.py` — v7 rejection, per-provider freshness, write semantics.
+- `tests/test_normalize_windows.py` — new (9 tests).
+- `tests/test_opencode_usage_provider.py` — new (12 tests).
+- `tests/test_only_filter.py` — regression test
+  `test_only_claude_does_not_restamp_chatgpt_or_kimi`, opencode aliases & wiring.
+- `tests/test_statusbar.py`/`test_detail.py`/`test_json_out.py` — `e` segment.
+- `README.md` / `config.example.toml` — OpenCode docs + `[opencode]` example.
+
+**Migration:** v7 caches are rejected on load; the next fetch rebuilds clean v8.
 
 ---
 

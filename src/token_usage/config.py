@@ -14,7 +14,7 @@ CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / 
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 
-ALL_PROVIDERS = ("claude", "chatgpt", "kimi")
+ALL_PROVIDERS = ("claude", "chatgpt", "kimi", "opencode", "opencode-go")
 
 
 @dataclass
@@ -25,6 +25,18 @@ class Config:
     openai_browser: str = "zen"
     kimi_enabled: bool = True
     kimi_browser: str = "zen"
+    opencode_enabled: bool = False
+    opencode_provider_id: str = "opencode"
+    opencode_db_path: str = ""
+    opencode_primary_window_hours: int = 5
+    opencode_weekly_window_days: int = 7
+    opencode_primary_limit_tokens: int = 0
+    opencode_weekly_limit_tokens: int = 0
+    opencode_go_enabled: bool = False
+    opencode_go_primary_window_hours: int = 5
+    opencode_go_weekly_window_days: int = 7
+    opencode_go_primary_limit_tokens: int = 0
+    opencode_go_weekly_limit_tokens: int = 0
     cache_ttl_seconds: int = 300
     weekly_reset_weekday: int = 0
     weekly_reset_hour_local: int = 22
@@ -45,6 +57,8 @@ def load() -> Config:
     claude = data.get("claude") or {}
     openai_cfg = data.get("openai") or {}
     kimi_cfg = data.get("kimi") or {}
+    opencode_cfg = data.get("opencode") or {}
+    opencode_go_cfg = data.get("opencode-go") or {}
     cache_cfg = data.get("cache") or {}
     statusbar_cfg = data.get("statusbar") or {}
     raw_providers = statusbar_cfg.get("providers")
@@ -56,6 +70,18 @@ def load() -> Config:
         openai_browser=openai_cfg.get("browser", "zen"),
         kimi_enabled=bool(kimi_cfg.get("enabled", True)),
         kimi_browser=kimi_cfg.get("browser", "zen"),
+        opencode_enabled=bool(opencode_cfg.get("enabled", False)),
+        opencode_provider_id=str(opencode_cfg.get("provider_id", "opencode")),
+        opencode_db_path=str(opencode_cfg.get("db_path", "") or ""),
+        opencode_primary_window_hours=int(opencode_cfg.get("primary_window_hours", 5)),
+        opencode_weekly_window_days=int(opencode_cfg.get("weekly_window_days", 7)),
+        opencode_primary_limit_tokens=int(opencode_cfg.get("primary_limit_tokens", 0)),
+        opencode_weekly_limit_tokens=int(opencode_cfg.get("weekly_limit_tokens", 0)),
+        opencode_go_enabled=bool(opencode_go_cfg.get("enabled", False)),
+        opencode_go_primary_window_hours=int(opencode_go_cfg.get("primary_window_hours", 5)),
+        opencode_go_weekly_window_days=int(opencode_go_cfg.get("weekly_window_days", 7)),
+        opencode_go_primary_limit_tokens=int(opencode_go_cfg.get("primary_limit_tokens", 0)),
+        opencode_go_weekly_limit_tokens=int(opencode_go_cfg.get("weekly_limit_tokens", 0)),
         cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 300)),
         weekly_reset_weekday=int(claude.get("weekly_reset_weekday", 0)),
         weekly_reset_hour_local=int(claude.get("weekly_reset_hour_local", 22)),
@@ -70,7 +96,20 @@ def _normalize_providers(raw) -> tuple[str, ...]:
         items = [str(p).strip().lower() for p in raw]
     else:
         return ALL_PROVIDERS
-    aliases = {"openai": "chatgpt", "gpt": "chatgpt", "c": "claude", "o": "chatgpt", "k": "kimi"}
+    aliases = {
+        "openai": "chatgpt",
+        "gpt": "chatgpt",
+        "c": "claude",
+        "o": "chatgpt",
+        "k": "kimi",
+        "e": "opencode",
+        "oc": "opencode",
+        "zen": "opencode",
+        "opencode-zen": "opencode",
+        "g": "opencode-go",
+        "oc-go": "opencode-go",
+        "go": "opencode-go",
+    }
     seen: list[str] = []
     for it in items:
         if not it:

@@ -97,10 +97,23 @@ def _format_kimi_segment(kimi: dict, weekly_warn_threshold: float) -> str:
     return out
 
 
+def _format_opencode_segment(opencode: dict, weekly_warn_threshold: float, letter: str = "e") -> str:
+    if not opencode.get("available"):
+        return f"{letter} err"
+    pct_5h = float(opencode.get("primary_pct", 0) or 0)
+    pct_week = float(opencode.get("weekly_pct", 0) or 0)
+    out = f"{letter}{pct_5h:.0f}%"
+    out += _primary_reset_suffix(opencode.get("primary_reset_at"), pct_week)
+    out += _weekly_warn_suffix(pct_week, opencode.get("weekly_reset_at"), weekly_warn_threshold)
+    return out
+
+
 def format_compact(
     summary: dict,
     openai: dict | None = None,
     kimi: dict | None = None,
+    opencode: dict | None = None,
+    opencode_go: dict | None = None,
     weekly_warn_threshold: float = WEEKLY_WARN_THRESHOLD,
     bare: bool = False,
 ) -> str:
@@ -111,4 +124,8 @@ def format_compact(
         segments.append(_format_openai_segment(openai, weekly_warn_threshold))
     if kimi is not None:
         segments.append(_format_kimi_segment(kimi, weekly_warn_threshold))
+    if opencode is not None:
+        segments.append(_format_opencode_segment(opencode, weekly_warn_threshold, letter="e"))
+    if opencode_go is not None:
+        segments.append(_format_opencode_segment(opencode_go, weekly_warn_threshold, letter="g"))
     return " ".join(segments)

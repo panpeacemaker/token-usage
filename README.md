@@ -1,6 +1,7 @@
 # token-usage
 
-Lightweight statusbar tracker for Claude Code, ChatGPT Plus, and Kimi Code usage.
+Lightweight statusbar tracker for Claude Code, ChatGPT Plus, Kimi Code, and
+OpenCode (sst/opencode) usage.
 
 ## How it works
 
@@ -23,6 +24,17 @@ ChatGPT Plus and Kimi Code usage are read directly from each vendor's web API
 using cookies pulled from your browser profile (Firefox / Zen / Chrome /
 Chromium / Brave). No tokens stored on disk.
 
+OpenCode (sst/opencode) has no public quota/billing API, so usage is aggregated
+from the local SQLite history at `~/.local/share/opencode/opencode.db` filtered
+by `providerID` (`opencode` for Zen, `opencode-go` for Go) into a rolling 5-hour
+and 7-day window. Percentages are computed against the token limits configured
+in `[opencode]`. Disabled by default.
+
+The cache (`~/.cache/token-usage/summary.json`) tracks freshness **per provider**:
+running `sb-claude-usage` every statusbar tick will not freeze ChatGPT/Kimi/OpenCode
+data — each provider refreshes on its own TTL, and expired reset windows are rolled
+to 0% on render.
+
 ## Install
 
 ```sh
@@ -44,6 +56,8 @@ token-usage --statusbar                       # "c19%@02:10 o0%w100%@Tue21:28 k2
 token-usage --statusbar --only claude         # "c19%@02:10"
 token-usage --statusbar --only chatgpt        # "o0%w100%@Tue21:28"
 token-usage --statusbar --only kimi           # "k25%@02:54"
+token-usage --statusbar --only opencode       # "e12%@14:20"
+token-usage --statusbar --only opencode-go    # "g25%@14:20"
 token-usage --statusbar --only claude,kimi    # "c19%@02:10 k25%@02:54"
 token-usage --detail                          # multi-line detail (also honours --only)
 token-usage --detail --only kimi              # Kimi section only, no other noise
@@ -51,6 +65,10 @@ token-usage --json                            # raw JSON (also honours --only)
 token-usage --no-cache                        # bypass output cache
 token-usage --version                         # print version
 ```
+
+`--only` accepts canonical names (`claude`, `chatgpt`, `kimi`, `opencode`,
+`opencode-go`) and shorthand aliases (`c`, `o`, `k`, `e`/`oc`/`zen`/`opencode-zen`,
+`g`/`oc-go`/`go`).
 
 ### Compact format
 
@@ -60,8 +78,8 @@ token-usage --version                         # print version
 
 | Field | Meaning |
 | --- | --- |
-| `<letter>` | `c` Claude, `o` ChatGPT, `k` Kimi |
-| `<pct>%` | Current short-window usage (5-hour for Claude/Kimi, primary for ChatGPT) |
+| `<letter>` | `c` Claude, `o` ChatGPT, `k` Kimi, `e` OpenCode Zen, `g` OpenCode Go |
+| `<pct>%` | Current short-window usage (5-hour for Claude/Kimi/OpenCode, primary for ChatGPT) |
 | `*` | Stale marker — Claude only, when serving cached statusline data |
 | `@HH:MM` | Local time the short window resets. Hidden when `week_pct >= 100` (irrelevant once weekly is exhausted) |
 | `w<week_pct>%@<weekday><HH:MM>` | Weekly warning suffix. Only appears when weekly hits the **80% threshold** |
@@ -134,11 +152,27 @@ browser = "zen"                # firefox | zen | chrome | chromium | brave
 enabled = true
 browser = "zen"
 
+[opencode]
+enabled = false                      # OpenCode Zen — letter `e`
+provider_id = "opencode"
+db_path = ""                         # empty = ~/.local/share/opencode/opencode.db
+primary_window_hours = 5
+weekly_window_days = 7
+primary_limit_tokens = 25000000      # required when enabled
+weekly_limit_tokens = 560000000
+
+[opencode-go]
+enabled = false                      # OpenCode Go — letter `g`
+primary_window_hours = 5
+weekly_window_days = 7
+primary_limit_tokens = 25000000      # required when enabled
+weekly_limit_tokens = 560000000
+
 [cache]
 ttl_seconds = 300
 
 [statusbar]
-providers = ["claude", "chatgpt", "kimi"]
+providers = ["claude", "chatgpt", "kimi", "opencode", "opencode-go"]
 ```
 
 The Claude plan and limits only matter when falling back to local JSONL.
@@ -147,6 +181,12 @@ When the statusline cache is active, percentages come straight from Anthropic.
 ChatGPT and Kimi require you to be logged in to the respective web app in
 the configured browser profile. Cookies are read on every fetch (cached for
 `cache.ttl_seconds`); nothing is stored on disk.
+
+OpenCode requires `[opencode] enabled = true` and configured `*_limit_tokens`
+(no public API exposes the real Zen/Go quota, so the percentage is computed
+against your local budget). The provider only reads the SQLite history; if you
+also want OpenCode to be rendered without `--only`, append `"opencode"` to
+`[statusbar] providers`.
 
 ## Manual statusLine setup
 

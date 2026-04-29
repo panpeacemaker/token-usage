@@ -61,14 +61,14 @@ def test_successful_fetch_parses_weekly_and_five_hour():
         "usages": [
             {
                 "scope": "FEATURE_CODING",
-                "detail": {"limit": "100", "remaining": "20", "resetTime": "2026-05-03T14:54:00Z"},
+                "detail": {"limit": "100", "remaining": "20", "resetTime": "2099-05-03T14:54:00Z"},
                 "limits": [
                     {
                         "window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
                         "detail": {
                             "limit": "100",
                             "remaining": "75",
-                            "resetTime": "2026-04-26T19:54:00Z",
+                            "resetTime": "2099-04-26T19:54:00Z",
                         },
                     }
                 ],
@@ -85,9 +85,48 @@ def test_successful_fetch_parses_weekly_and_five_hour():
 
     assert result.available
     assert result.weekly_pct == 80.0
-    assert result.weekly_reset_at == 1777820040
+    assert result.weekly_reset_at == 4081503240
     assert result.primary_pct == 25.0
-    assert result.primary_reset_at == 1777233240
+    assert result.primary_reset_at == 4080916440
+
+
+def test_expired_window_rolls_to_zero():
+    mock_requests, import_side = _mock_modules()
+    session = MagicMock()
+    mock_requests.Session.return_value = session
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "usages": [
+            {
+                "scope": "FEATURE_CODING",
+                "detail": {"limit": "100", "remaining": "20", "resetTime": "2099-05-03T14:54:00Z"},
+                "limits": [
+                    {
+                        "window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+                        "detail": {
+                            "limit": "100",
+                            "remaining": "75",
+                            "resetTime": "2000-04-26T19:54:00Z",
+                        },
+                    }
+                ],
+            }
+        ]
+    }
+    session.post.return_value = resp
+
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(kimi_mod, "load_cookies", return_value=_jar_with_auth()),
+    ):
+        result = fetch_kimi("zen")
+
+    assert result.available
+    assert result.weekly_pct == 80.0
+    assert result.primary_pct == 0.0
+    assert result.primary_reset_at is None
 
 
 def test_fetch_returns_error_when_no_auth_cookie():

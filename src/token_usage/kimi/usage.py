@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -51,6 +52,16 @@ def _reset_epoch(detail: dict) -> int | None:
         return int(dt.timestamp())
     except (TypeError, ValueError):
         return None
+
+
+def _window_metrics(detail: dict, now_epoch: int) -> tuple[float, int | None]:
+    # Kimi keeps returning the previous window (used%, past resetTime) until
+    # the user makes a new request that lazily starts a fresh window. Auto-roll
+    # expired windows to 0%/None so the statusbar matches Claude/OpenAI behavior.
+    reset = _reset_epoch(detail)
+    if reset is not None and reset <= now_epoch:
+        return 0.0, None
+    return _used_pct(detail), reset
 
 
 def _five_hour_window(usage_obj: dict) -> dict:
@@ -114,11 +125,14 @@ def fetch_kimi(browser: str = "firefox") -> KimiUsage:
 
     weekly_detail = usage_obj.get("detail") or {}
     five_hour_detail = _five_hour_window(usage_obj)
+    now_epoch = int(time.time())
+    primary_pct, primary_reset = _window_metrics(five_hour_detail, now_epoch)
+    weekly_pct, weekly_reset = _window_metrics(weekly_detail, now_epoch)
 
     return KimiUsage(
         available=True,
-        primary_pct=_used_pct(five_hour_detail),
-        primary_reset_at=_reset_epoch(five_hour_detail),
-        weekly_pct=_used_pct(weekly_detail),
-        weekly_reset_at=_reset_epoch(weekly_detail),
+        primary_pct=primary_pct,
+        primary_reset_at=primary_reset,
+        weekly_pct=weekly_pct,
+        weekly_reset_at=weekly_reset,
     )

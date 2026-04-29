@@ -20,10 +20,33 @@ browser = "zen"
 enabled = true
 browser = "zen"
 
+[opencode]
+# OpenCode (sst/opencode) Zen usage tracker. Reads ~/.local/share/opencode/opencode.db
+# and aggregates assistant tokens for providerID="opencode" into a 5h + 7d
+# rolling window. There is no public OpenCode quota API, so percentage is computed
+# against the limit_tokens you configure here. Statusbar letter: `e`.
+enabled = false
+provider_id = "opencode"
+db_path = ""                    # empty = ~/.local/share/opencode/opencode.db
+primary_window_hours = 5
+weekly_window_days = 7
+primary_limit_tokens = 25000000
+weekly_limit_tokens = 560000000
+
+[opencode-go]
+# OpenCode Go usage tracker. Same DB as [opencode] but filtered by
+# providerID="opencode-go". Statusbar letter: `g`. db_path inherits from [opencode].
+enabled = false
+primary_window_hours = 5
+weekly_window_days = 7
+primary_limit_tokens = 25000000
+weekly_limit_tokens = 560000000
+
 [cache]
 ttl_seconds = 300
 
 [statusbar]
 # Default set of providers shown in --statusbar / --detail / --json
 # when --only is not passed. CLI flag overrides this.
+# Add "opencode" to include OpenCode (requires [opencode] enabled = true).
 providers = ["claude", "chatgpt", "kimi"]

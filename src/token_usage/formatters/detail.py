@@ -135,10 +135,33 @@ def _kimi_section(kimi: dict) -> list[str]:
     return lines
 
 
+def _opencode_section(opencode: dict, label: str = "OpenCode") -> list[str]:
+    pid = opencode.get("provider_id", "opencode")
+    lines: list[str] = [f"🟠 {label} ({pid})", DIVIDER]
+    if opencode.get("available"):
+        primary_reset = _fmt_local_time(_epoch_to_dt(opencode.get("primary_reset_at")))
+        weekly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("weekly_reset_at")))
+        lines.append(f"  5-hour:  {opencode.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
+        lines.append(f"  weekly:  {opencode.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+        ptoks = opencode.get("primary_tokens", 0)
+        plim = opencode.get("primary_limit_tokens", 0)
+        wtoks = opencode.get("weekly_tokens", 0)
+        wlim = opencode.get("weekly_limit_tokens", 0)
+        if plim:
+            lines.append(f"     5h tokens:   {_fmt_int(ptoks)} / {_fmt_int(plim)}")
+        if wlim:
+            lines.append(f"     wk tokens:   {_fmt_int(wtoks)} / {_fmt_int(wlim)}")
+    else:
+        lines.append(f"  ⚠ unavailable: {opencode.get('error', 'not configured')}")
+    return lines
+
+
 def format_detail(
     summary: dict | None = None,
     openai: dict | None = None,
     kimi: dict | None = None,
+    opencode: dict | None = None,
+    opencode_go: dict | None = None,
 ) -> str:
     sections: list[list[str]] = []
     if summary:
@@ -147,4 +170,8 @@ def format_detail(
         sections.append(_openai_section(openai))
     if kimi is not None:
         sections.append(_kimi_section(kimi))
+    if opencode is not None:
+        sections.append(_opencode_section(opencode, label="OpenCode"))
+    if opencode_go is not None:
+        sections.append(_opencode_section(opencode_go, label="OpenCode Go"))
     return "\n\n".join("\n".join(section) for section in sections)

@@ -281,6 +281,72 @@ def test_kimi_weekly_reset_shown_when_warn() -> None:
     assert result == f"k0%w95%@{WEEKLY_RESET_DAYHHMM}"
 
 
+def test_opencode_segment_rendered_when_provided() -> None:
+    opencode = {
+        "available": True,
+        "primary_pct": 12.0,
+        "weekly_pct": 5.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == f"e12%@{RESET_HHMM}"
+
+
+def test_opencode_err_segment_visible_on_failure() -> None:
+    opencode = {"available": False, "error": "no db"}
+    result = format_compact({}, None, None, opencode)
+    assert result == "e err"
+
+
+def test_opencode_weekly_warn_above_threshold() -> None:
+    opencode = {
+        "available": True,
+        "primary_pct": 30.0,
+        "weekly_pct": 90.0,
+        "primary_reset_at": int(RESET.timestamp()),
+        "weekly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == f"e30%@{RESET_HHMM}w90%@{WEEKLY_RESET_DAYHHMM}"
+
+
+def test_opencode_alongside_other_providers() -> None:
+    summary = {"available": True, "five_hour_pct": 10.0, "seven_day_pct": 0.0, "five_hour_resets_at": RESET}
+    openai = {"available": True, "primary_pct": 0.0, "weekly_pct": 0.0}
+    kimi = {"available": True, "primary_pct": 5.0, "weekly_pct": 0.0}
+    opencode = {"available": True, "primary_pct": 1.0, "weekly_pct": 0.0}
+    result = format_compact(summary, openai, kimi, opencode)
+    parts = result.split(" ")
+    assert parts[0] == f"c10%@{RESET_HHMM}"
+    assert parts[1] == "o0%"
+    assert parts[2] == "k5%"
+    assert parts[3] == "e1%"
+
+
+def test_opencode_go_segment_rendered_when_provided() -> None:
+    opencode_go = {
+        "available": True,
+        "primary_pct": 25.0,
+        "weekly_pct": 8.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, None, opencode_go)
+    assert result == f"g25%@{RESET_HHMM}"
+
+
+def test_opencode_go_err_segment_visible_on_failure() -> None:
+    opencode_go = {"available": False, "error": "no db"}
+    result = format_compact({}, None, None, None, opencode_go)
+    assert result == "g err"
+
+
+def test_opencode_and_go_both_rendered() -> None:
+    opencode = {"available": True, "primary_pct": 1.0, "weekly_pct": 0.0}
+    opencode_go = {"available": True, "primary_pct": 25.0, "weekly_pct": 0.0}
+    result = format_compact({}, None, None, opencode, opencode_go)
+    assert result == "e1% g25%"
+
+
 def test_weekly_reset_missing_does_not_break_rendering() -> None:
     summary = {
         "available": True,
