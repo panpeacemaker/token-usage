@@ -237,9 +237,11 @@ Remove the package and wrappers from `~/.local/bin/` and delete `~/.config/token
 
 ## Credits
 
-- ccusage
-- AIQuotaBar
-- Claude-Code-Usage-Monitor
+Inspired by these projects:
+
+- [ccusage](https://github.com/ryoppippi/ccusage) by [@ryoppippi](https://github.com/ryoppippi) — Claude Code usage analyzer from local JSONL files (MIT)
+- [AIQuotaBar](https://github.com/yagcioglutoprak/AIQuotaBar) by [@yagcioglutoprak](https://github.com/yagcioglutoprak) — macOS menu bar app for AI usage limits (MIT)
+- [Claude-Code-Usage-Monitor](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) by [@Maciek-roboblog](https://github.com/Maciek-roboblog) — real-time terminal monitor for Claude token usage (MIT)
 
 ## License
 
