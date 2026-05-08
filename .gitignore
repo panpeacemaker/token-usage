@@ -6,3 +6,5 @@ __pycache__/
 .sisyphus/
 dist/
 build/
+config.toml
+REFACTOR_NOTES.md
