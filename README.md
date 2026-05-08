@@ -1,39 +1,74 @@
 # token-usage
 
-Lightweight statusbar tracker for Claude Code, ChatGPT Plus, Kimi Code, and
-OpenCode (sst/opencode) usage.
+Lightweight statusbar tracker for Claude Code, ChatGPT Plus, Kimi Code, and OpenCode usage.
+
+`token-usage` is a Python CLI for Linux users who want AI usage visible in a terminal or statusbar. It is designed for tiling window manager setups and dwmblocks-compatible bars, with provider-specific wrappers for clean statusbar integration.
+
+## Features
+
+- Tracks Claude Code, ChatGPT Plus, Kimi Code, OpenCode Zen, and OpenCode Go usage.
+- Outputs compact statusbar text, multi-line detail views, and raw JSON.
+- Uses Claude Code statusline data first, with OAuth and local JSONL fallbacks.
+- Reads ChatGPT and Kimi usage from vendor web APIs using browser session cookies.
+- Aggregates OpenCode usage from local SQLite history.
+- Caches freshness per provider, so one slow or expired provider does not freeze the others.
+- Ships drop-in statusbar wrapper scripts for combined or per-provider display.
+
+## Requirements
+
+- Python >=3.10
+- Linux, POSIX environment
+- A browser profile with active sessions for ChatGPT and Kimi when those providers are enabled
+- Claude Code for Claude statusline integration
+- OpenCode local SQLite history when OpenCode providers are enabled
+
+## Quick Start
+
+Clone → install → verify:
+
+```sh
+git clone https://github.com/panpeacemaker/token-usage.git
+cd token-usage && ./install.sh
+token-usage --version
+token-usage --statusbar
+```
+
+You can also install from a local checkout with `pipx`:
+
+```sh
+pipx install .
+```
 
 ## How it works
 
+`token-usage` uses a hybrid source model. Each provider is read from the most reliable local or authenticated source available, then rendered into a compact format for statusbars.
+
+### Claude Code
+
 The Claude side is a **hybrid of two sources**, neither of which hits a rate-limited API:
 
-1. **Primary - Claude Code statusline JSON.** Claude Code pipes live session JSON
-   (including `rate_limits.five_hour` / `seven_day` percentages and reset times)
-   to a `statusLine` command. `token-usage-statusline` captures that JSON to
-   `~/.cache/token-usage/statusline.json` on every message.
-2. **Fallback - local JSONL aggregation.** When the statusline cache is absent
-   or its tracked reset window has already expired, the CLI falls back to a
-   ccusage-style aggregation of `~/.claude/projects/**/*.jsonl` (plus opencode
-   SQLite history) using the plan limits in `config.toml`.
+1. **Primary - Claude Code statusline JSON.** Claude Code pipes live session JSON, including `rate_limits.five_hour` / `seven_day` percentages and reset times, to a `statusLine` command. `token-usage-statusline` captures that JSON to `~/.cache/token-usage/statusline.json` on every message.
+2. **Fallback - local JSONL aggregation.** When the statusline cache is absent or its tracked reset window has already expired, the CLI falls back to a ccusage-style aggregation of `~/.claude/projects/**/*.jsonl`, plus opencode SQLite history, using the plan limits in `config.toml`.
 
-When both statusline and local JSONL are unavailable, the CLI falls back to
-the OAuth usage API (`/api/usage`). The Claude source priority is:
-**statusline → OAuth → local JSONL → stale statusline → error**.
+When both statusline and local JSONL are unavailable, the CLI falls back to the OAuth usage API (`/api/usage`). The Claude source priority is:
 
-ChatGPT Plus and Kimi Code usage are read directly from each vendor's web API
-using cookies pulled from your browser profile (Firefox / Zen / Chrome /
-Chromium / Brave). No tokens stored on disk.
+```text
+statusline → OAuth → local JSONL → stale statusline → error
+```
 
-OpenCode (sst/opencode) has no public quota/billing API, so usage is aggregated
-from the local SQLite history at `~/.local/share/opencode/opencode.db` filtered
-by `providerID` (`opencode` for Zen, `opencode-go` for Go) into a rolling 5-hour
-and 7-day window. Percentages are computed against the token limits configured
-in `[opencode]`. Disabled by default.
+### ChatGPT Plus and Kimi Code
 
-The cache (`~/.cache/token-usage/summary.json`) tracks freshness **per provider**:
-running `sb-claude-usage` every statusbar tick will not freeze ChatGPT/Kimi/OpenCode
-data — each provider refreshes on its own TTL, and expired reset windows are rolled
-to 0% on render.
+ChatGPT Plus and Kimi Code usage are read directly from each vendor's web API using cookies pulled from your browser profile. Supported browsers are Firefox, Zen, Chrome, Chromium, and Brave. No tokens are stored on disk.
+
+### OpenCode
+
+OpenCode, sst/opencode, has no public quota or billing API, so usage is aggregated from the local SQLite history at `~/.local/share/opencode/opencode.db`. Results are filtered by `providerID`, `opencode` for Zen and `opencode-go` for Go, into rolling 5-hour and 7-day windows.
+
+Percentages are computed against the token limits configured in `[opencode]`. OpenCode is disabled by default.
+
+### Cache behavior
+
+The cache at `~/.cache/token-usage/summary.json` tracks freshness **per provider**. Running `sb-claude-usage` every statusbar tick will not freeze ChatGPT, Kimi, or OpenCode data. Each provider refreshes on its own TTL, and expired reset windows are rolled to 0% on render.
 
 ## Install
 
@@ -44,10 +79,8 @@ to 0% on render.
 The installer:
 
 - Installs the `token-usage` and `token-usage-statusline` console scripts.
-- Installs four wrappers to `~/.local/bin/`:
-  `sb-ai-usage`, `sb-claude-usage`, `sb-chatgpt-usage`, `sb-kimi-usage`.
-- Adds (or surfaces a conflict with) a `statusLine` entry in
-  `~/.claude/settings.json` pointing at `token-usage-statusline`.
+- Installs four wrappers to `~/.local/bin/`: `sb-ai-usage`, `sb-claude-usage`, `sb-chatgpt-usage`, `sb-kimi-usage`.
+- Adds, or surfaces a conflict with, a `statusLine` entry in `~/.claude/settings.json` pointing at `token-usage-statusline`.
 
 ## Usage
 
@@ -66,25 +99,33 @@ token-usage --no-cache                        # bypass output cache
 token-usage --version                         # print version
 ```
 
-`--only` accepts canonical names (`claude`, `chatgpt`, `kimi`, `opencode`,
-`opencode-go`) and shorthand aliases (`c`, `o`, `k`, `e`/`oc`/`zen`/`opencode-zen`,
-`g`/`oc-go`/`go`).
+`--only` accepts canonical names and shorthand aliases:
+
+| Provider | Canonical name | Aliases |
+| --- | --- | --- |
+| Claude | `claude` | `c` |
+| ChatGPT | `chatgpt` | `o` |
+| Kimi | `kimi` | `k` |
+| OpenCode Zen | `opencode` | `e`, `oc`, `zen`, `opencode-zen` |
+| OpenCode Go | `opencode-go` | `g`, `oc-go`, `go` |
 
 ### Compact format
 
-```
+```text
 <letter><pct>%[*][@HH:MM][w<week_pct>%@<weekday><HH:MM>]
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `<letter>` | `c` Claude, `o` ChatGPT, `k` Kimi, `e` OpenCode Zen, `g` OpenCode Go |
-| `<pct>%` | Current short-window usage (5-hour for Claude/Kimi/OpenCode, primary for ChatGPT) |
-| `*` | Stale marker — Claude only, when serving cached statusline data |
-| `@HH:MM` | Local time the short window resets. Hidden when `week_pct >= 100` (irrelevant once weekly is exhausted) |
+| `<pct>%` | Current short-window usage, 5-hour for Claude/Kimi/OpenCode, primary for ChatGPT |
+| `*` | Stale marker, Claude only, when serving cached statusline data |
+| `@HH:MM` | Local time the short window resets. Hidden when `week_pct >= 100`, because the short reset is irrelevant once weekly is exhausted |
 | `w<week_pct>%@<weekday><HH:MM>` | Weekly warning suffix. Only appears when weekly hits the **80% threshold** |
 
-Segments are space-separated. Examples:
+Segments are space-separated.
+
+Examples:
 
 | State | Output |
 | --- | --- |
@@ -96,26 +137,20 @@ Segments are space-separated. Examples:
 
 ### Per-provider plugins
 
-The repo ships four drop-in wrappers. Install puts them in `~/.local/bin/`.
-Wire each into your bar separately if you want one column per provider, or
-use `sb-ai-usage` for a single combined column.
+The repo ships four drop-in wrappers. Install puts them in `~/.local/bin/`. Wire each into your bar separately if you want one column per provider, or use `sb-ai-usage` for a single combined column.
 
-| Script | Statusbar output | Left-click (notification) |
+| Script | Statusbar output | Left-click notification |
 | --- | --- | --- |
 | `sb-ai-usage` | `c19%@02:10 o0%w100%@Tue21:28 k25%@02:54` | All three sections |
 | `sb-claude-usage` | `c19%@02:10` | Claude detail + local JSONL stats |
 | `sb-chatgpt-usage` | `o0%w100%@Tue21:28` | ChatGPT detail only |
 | `sb-kimi-usage` | `k25%@02:54` | Kimi detail only |
 
-`sb-ai-usage` and `sb-claude-usage` also bind middle-click to launch
-`claude-monitor` in a terminal if installed.
+`sb-ai-usage` and `sb-claude-usage` also bind middle-click to launch `claude-monitor` in a terminal if installed.
 
 ### `--only` filter
 
-`--only PROVIDER[,PROVIDER...]` accepts `claude`, `chatgpt`, `kimi` (or
-single-letter aliases `c`, `o`, `k`). It skips both the network fetch *and*
-the rendering for everything else — `--detail --only kimi` shows only the
-Kimi section, no "Claude unavailable" placeholder.
+`--only PROVIDER[,PROVIDER...]` accepts `claude`, `chatgpt`, `kimi`, or single-letter aliases `c`, `o`, `k`. It skips both the network fetch and the rendering for everything else. For example, `--detail --only kimi` shows only the Kimi section, with no "Claude unavailable" placeholder.
 
 Pin the default set globally in `config.toml`:
 
@@ -126,8 +161,7 @@ providers = ["claude", "kimi"]   # drop chatgpt from default --statusbar
 
 ### JSON output
 
-The `_source` field in `--json` output shows which data source won the
-Claude lookup: `statusline`, `oauth`, `local`, `statusline-stale`, or `none`.
+The `_source` field in `--json` output shows which data source won the Claude lookup: `statusline`, `oauth`, `local`, `statusline-stale`, or `none`.
 
 ## Config
 
@@ -175,23 +209,15 @@ ttl_seconds = 300
 providers = ["claude", "chatgpt", "kimi", "opencode", "opencode-go"]
 ```
 
-The Claude plan and limits only matter when falling back to local JSONL.
-When the statusline cache is active, percentages come straight from Anthropic.
+The Claude plan and limits only matter when falling back to local JSONL. When the statusline cache is active, percentages come straight from Anthropic.
 
-ChatGPT and Kimi require you to be logged in to the respective web app in
-the configured browser profile. Cookies are read on every fetch (cached for
-`cache.ttl_seconds`); nothing is stored on disk.
+ChatGPT and Kimi require you to be logged in to the respective web app in the configured browser profile. Cookies are read on every fetch, cached for `cache.ttl_seconds`, and nothing is stored on disk.
 
-OpenCode requires `[opencode] enabled = true` and configured `*_limit_tokens`
-(no public API exposes the real Zen/Go quota, so the percentage is computed
-against your local budget). The provider only reads the SQLite history; if you
-also want OpenCode to be rendered without `--only`, append `"opencode"` to
-`[statusbar] providers`.
+OpenCode requires `[opencode] enabled = true` and configured `*_limit_tokens`. No public API exposes the real Zen/Go quota, so the percentage is computed against your local budget. The provider only reads the SQLite history. If you also want OpenCode to be rendered without `--only`, append `"opencode"` to `[statusbar] providers`.
 
 ## Manual statusLine setup
 
-If `install.sh` skipped the `settings.json` update because you already have a
-custom `statusLine`, add the writer manually:
+If `install.sh` skipped the `settings.json` update because you already have a custom `statusLine`, add the writer manually:
 
 ```json
 {
@@ -203,16 +229,18 @@ custom `statusLine`, add the writer manually:
 }
 ```
 
-The writer prints its own one-line status for Claude Code's UI and writes the
-cache file in the background.
+The writer prints its own one-line status for Claude Code's UI and writes the cache file in the background.
 
 ## Uninstall
 
-Remove the package and wrappers from `~/.local/bin/` and delete
-`~/.config/token-usage/` and `~/.cache/token-usage/` if desired.
+Remove the package and wrappers from `~/.local/bin/` and delete `~/.config/token-usage/` and `~/.cache/token-usage/` if desired.
 
 ## Credits
 
 - ccusage
 - AIQuotaBar
 - Claude-Code-Usage-Monitor
+
+## License
+
+MIT. See `LICENSE` for details.
