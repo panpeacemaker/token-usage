@@ -62,8 +62,10 @@ def is_still_valid(
     if usage is None or not usage.available:
         return False
     now = now or datetime.now(timezone.utc)
-    if file_mtime is not None and (now.timestamp() - file_mtime) > max_file_age_seconds:
-        return False
+    if file_mtime is not None:
+        age = now.timestamp() - file_mtime
+        if age < 0 or age > max_file_age_seconds:
+            return False
     if usage.five_hour_resets_at:
         return usage.five_hour_resets_at > now
     if usage.seven_day_resets_at:

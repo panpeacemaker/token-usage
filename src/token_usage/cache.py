@@ -14,6 +14,19 @@ CACHE_FILE = CACHE_DIR / "summary.json"
 CACHE_VERSION = 9
 
 
+def _age_within(fetched: float, max_age_seconds: int) -> bool:
+    """True iff `fetched` is in the past and within `max_age_seconds`.
+
+    A future timestamp (clock skew from suspend/resume or an NTP step) yields a
+    negative age; we treat that as stale so the provider gets refetched instead
+    of being pinned "fresh" forever.
+    """
+    if max_age_seconds <= 0:
+        return False
+    age = time.time() - fetched
+    return 0 <= age <= max_age_seconds
+
+
 def read_raw() -> dict | None:
     if not CACHE_FILE.exists():
         return None
@@ -35,10 +48,11 @@ def read(max_age_seconds: int) -> dict | None:
     data = read_raw()
     if data is None:
         return None
-    if max_age_seconds <= 0:
+    try:
+        fetched_at = float(data.get("fetched_at", 0) or 0)
+    except (TypeError, ValueError):
         return None
-    fetched_at = data.get("fetched_at", 0)
-    if time.time() - fetched_at > max_age_seconds:
+    if not _age_within(fetched_at, max_age_seconds):
         return None
     return data
 
@@ -59,27 +73,16 @@ def provider_fetched_at(data: dict | None, name: str) -> float:
         return float(data.get("fetched_at", 0) or 0)
     except (TypeError, ValueError):
         return 0.0
-    per = data.get("_provider_fetched_at") or {}
-    val = per.get(name)
-    if val is not None:
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return 0.0
-    try:
-        return float(data.get("fetched_at", 0) or 0)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def is_provider_fresh(data: dict | None, name: str, max_age_seconds: int) -> bool:
     """Return True iff the provider's per-provider stamp is within `max_age_seconds`."""
-    if not data or max_age_seconds <= 0:
+    if not data:
         return False
     fetched = provider_fetched_at(data, name)
     if fetched <= 0:
         return False
-    return (time.time() - fetched) <= max_age_seconds
+    return _age_within(fetched, max_age_seconds)
 
 
 def write(payload: dict, fetched_providers: set[str] | None = None) -> None:
@@ -97,9 +100,11 @@ def write(payload: dict, fetched_providers: set[str] | None = None) -> None:
     per_provider: dict[str, float] = {}
     for k, v in existing_per_provider.items():
         try:
-            per_provider[str(k)] = float(v)
+            ts = float(v)
         except (TypeError, ValueError):
             continue
+        if ts <= now:
+            per_provider[str(k)] = ts
     if fetched_providers:
         for name in fetched_providers:
             per_provider[name] = now

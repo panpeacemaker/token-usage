@@ -148,6 +148,19 @@ def test_is_still_valid_no_mtime_skips_check() -> None:
     assert statusline.is_still_valid(usage, now=now, file_mtime=None) is True
 
 
+def test_is_still_valid_future_file_mtime() -> None:
+    now = datetime(2026, 4, 8, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=10.0,
+        five_hour_resets_at=now + timedelta(hours=2),
+        seven_day_pct=5.0,
+        seven_day_resets_at=now + timedelta(days=3),
+    )
+    future_mtime = now.timestamp() + 48000
+    assert statusline.is_still_valid(usage, now=now, file_mtime=future_mtime) is False
+
+
 def test_epoch_to_dt_invalid_inputs() -> None:
     assert statusline._epoch_to_dt(None) is None
     assert statusline._epoch_to_dt("not-a-number") is None

@@ -123,3 +123,66 @@ def test_is_provider_fresh_returns_false_for_zero_max_age(tmp_path, monkeypatch)
     cache.write({"summary": {}}, fetched_providers={"claude"})
     raw = cache.read_raw()
     assert cache.is_provider_fresh(raw, "claude", max_age_seconds=0) is False
+
+
+def test_is_provider_fresh_rejects_future_stamp(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "_version": cache.CACHE_VERSION,
+                "fetched_at": time.time(),
+                "summary": {},
+                "_provider_fetched_at": {"claude": time.time() + 48000},
+            }
+        )
+    )
+    raw = cache.read_raw()
+    assert cache.is_provider_fresh(raw, "claude", max_age_seconds=300) is False
+
+
+def test_is_provider_fresh_accepts_recent_stamp(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "_version": cache.CACHE_VERSION,
+                "fetched_at": time.time(),
+                "summary": {},
+                "_provider_fetched_at": {"claude": time.time() - 10},
+            }
+        )
+    )
+    raw = cache.read_raw()
+    assert cache.is_provider_fresh(raw, "claude", max_age_seconds=300) is True
+
+
+def test_read_rejects_future_fetched_at(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    (tmp_path / "summary.json").write_text(
+        json.dumps({"_version": cache.CACHE_VERSION, "fetched_at": time.time() + 48000, "summary": {}})
+    )
+    assert cache.read(max_age_seconds=300) is None
+
+
+def test_write_drops_future_provider_stamp(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "_version": cache.CACHE_VERSION,
+                "fetched_at": time.time(),
+                "summary": {},
+                "_provider_fetched_at": {"claude": time.time() + 48000, "bad": "nan"},
+            }
+        )
+    )
+    cache.write({"summary": {}}, fetched_providers={"kimi"})
+    per = cache.read_raw()["_provider_fetched_at"]
+    assert "claude" not in per
+    assert "bad" not in per
+    assert "kimi" in per
