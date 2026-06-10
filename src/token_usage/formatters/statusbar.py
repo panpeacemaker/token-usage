@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-WEEKLY_WARN_THRESHOLD = 80.0
-WEEKLY_MAXED_PCT = 100.0
-
 
 def _coerce_dt(value) -> datetime | None:
     if value is None:
@@ -24,16 +21,6 @@ def _coerce_dt(value) -> datetime | None:
     return None
 
 
-def _local_day_hhmm(value) -> str:
-    dt = _coerce_dt(value)
-    if dt is None:
-        return ""
-    try:
-        return dt.astimezone().strftime("%a%H:%M")
-    except (ValueError, OSError):
-        return ""
-
-
 def _local_hhmm(value) -> str:
     dt = _coerce_dt(value)
     if dt is None:
@@ -44,68 +31,105 @@ def _local_hhmm(value) -> str:
         return ""
 
 
-def _primary_reset_suffix(primary_reset, week_pct: float) -> str:
-    if week_pct >= WEEKLY_MAXED_PCT:
-        return ""
-    hhmm = _local_hhmm(primary_reset)
-    return f"@{hhmm}" if hhmm else ""
+def _reset_suffix(reset, prefix: str = "@") -> str:
+    hhmm = _local_hhmm(reset)
+    return f"{prefix}{hhmm}" if hhmm else ""
 
 
-def _weekly_warn_suffix(week_pct: float, weekly_reset, threshold: float) -> str:
-    if week_pct < threshold:
-        return ""
-    out = f"w{week_pct:.0f}%"
-    week_reset = _local_day_hhmm(weekly_reset)
-    if week_reset:
-        out += f"@{week_reset}"
-    return out
+def _select_bar_window(
+    data: dict,
+    windows: list[tuple[str, str, str, str | None]],
+    bar_window: str = "max",
+) -> tuple[float, any, str] | None:
+    """Return (pct, reset, label) for the driving window, or None.
+
+    If ``bar_window`` names one of the labels in ``windows`` and that window
+    has a valid (non-None, coercible, non-expired) pct, it wins. Otherwise
+    fall back to the max-pct rule. ``bar_window="max"`` (the default) always
+    takes the max-rule path.
+
+    Each window tuple is ``(pct_field, reset_field, label, expired_field)``
+    where ``expired_field`` is the optional key in ``data`` that flags an
+    expired window (use ``None`` for providers that do not mark expiry).
+    """
+    if bar_window != "max":
+        for pct_field, reset_field, label, expired_field in windows:
+            if label != bar_window:
+                continue
+            if expired_field and data.get(expired_field):
+                break
+            pct = data.get(pct_field)
+            if pct is None:
+                break
+            try:
+                return (float(pct), data.get(reset_field), label)
+            except (TypeError, ValueError):
+                break
+    best = None
+    for pct_field, reset_field, label, expired_field in windows:
+        if expired_field and data.get(expired_field):
+            continue
+        pct = data.get(pct_field)
+        if pct is None:
+            continue
+        try:
+            pct_val = float(pct)
+        except (TypeError, ValueError):
+            continue
+        reset = data.get(reset_field)
+        if best is None or pct_val > best[0]:
+            best = (pct_val, reset, label)
+    return best
 
 
-def _format_claude_segment(summary: dict, weekly_warn_threshold: float) -> str:
-    if not summary.get("available"):
-        return "c err"
-
-    c_5h = float(summary.get("five_hour_pct", 0) or 0)
-    c_week = float(summary.get("seven_day_pct", 0) or 0)
-    stale_marker = "*" if summary.get("_stale") else ""
-
-    out = f"c{c_5h:.0f}%{stale_marker}"
-    out += _primary_reset_suffix(summary.get("five_hour_resets_at"), c_week)
-    out += _weekly_warn_suffix(c_week, summary.get("seven_day_resets_at"), weekly_warn_threshold)
-    return out
-
-
-def _format_openai_segment(openai: dict, weekly_warn_threshold: float) -> str:
-    if not openai.get("available"):
-        return "o err"
-    o_5h = float(openai.get("primary_pct", 0) or 0)
-    o_week = float(openai.get("weekly_pct", 0) or 0)
-    out = f"o{o_5h:.0f}%"
-    out += _primary_reset_suffix(openai.get("primary_reset_at"), o_week)
-    out += _weekly_warn_suffix(o_week, openai.get("weekly_reset_at"), weekly_warn_threshold)
-    return out
-
-
-def _format_kimi_segment(kimi: dict, weekly_warn_threshold: float) -> str:
-    if not kimi.get("available"):
-        return "k err"
-    k_5h = float(kimi.get("primary_pct", 0) or 0)
-    k_week = float(kimi.get("weekly_pct", 0) or 0)
-    out = f"k{k_5h:.0f}%"
-    out += _primary_reset_suffix(kimi.get("primary_reset_at"), k_week)
-    out += _weekly_warn_suffix(k_week, kimi.get("weekly_reset_at"), weekly_warn_threshold)
-    return out
-
-
-def _format_opencode_segment(opencode: dict, weekly_warn_threshold: float, letter: str = "e") -> str:
-    if not opencode.get("available"):
+def _format_segment(
+    data: dict,
+    letter: str,
+    windows: list[tuple[str, str, str, str | None]],
+    stale: bool = False,
+    reset_prefix: str = "@",
+    bar_window: str = "max",
+) -> str:
+    if not data.get("available"):
         return f"{letter} err"
-    pct_5h = float(opencode.get("primary_pct", 0) or 0)
-    pct_week = float(opencode.get("weekly_pct", 0) or 0)
-    out = f"{letter}{pct_5h:.0f}%"
-    out += _primary_reset_suffix(opencode.get("primary_reset_at"), pct_week)
-    out += _weekly_warn_suffix(pct_week, opencode.get("weekly_reset_at"), weekly_warn_threshold)
-    return out
+    best = _select_bar_window(data, windows, bar_window=bar_window)
+    stale_marker = "*" if stale else ""
+    if best is None:
+        return f"{letter}0%{stale_marker}"
+    pct, reset, _label = best
+    return f"{letter}{pct:.0f}%{stale_marker}{_reset_suffix(reset, prefix=reset_prefix)}"
+
+
+def _format_claude_segment(summary: dict, bar_window: str = "max") -> str:
+    windows = [
+        ("five_hour_pct", "five_hour_resets_at", "5h", "_five_hour_expired"),
+        ("seven_day_pct", "seven_day_resets_at", "7d", "_seven_day_expired"),
+    ]
+    return _format_segment(summary, "c", windows, stale=summary.get("_stale", False), bar_window=bar_window)
+
+
+def _format_openai_segment(openai: dict, bar_window: str = "max") -> str:
+    windows = [
+        ("primary_pct", "primary_reset_at", "primary", None),
+        ("weekly_pct", "weekly_reset_at", "weekly", None),
+    ]
+    return _format_segment(openai, "o", windows, bar_window=bar_window)
+
+
+def _format_kimi_segment(kimi: dict, bar_window: str = "max") -> str:
+    windows = [
+        ("primary_pct", "primary_reset_at", "5h", None),
+        ("weekly_pct", "weekly_reset_at", "weekly", None),
+    ]
+    return _format_segment(kimi, "k", windows, bar_window=bar_window)
+
+
+def _format_opencode_segment(opencode: dict, letter: str = "e", bar_window: str = "max") -> str:
+    windows = [
+        ("primary_pct", "primary_reset_at", "5h", None),
+        ("weekly_pct", "weekly_reset_at", "weekly", None),
+    ]
+    return _format_segment(opencode, letter, windows, reset_prefix="~", bar_window=bar_window)
 
 
 def format_compact(
@@ -114,18 +138,20 @@ def format_compact(
     kimi: dict | None = None,
     opencode: dict | None = None,
     opencode_go: dict | None = None,
-    weekly_warn_threshold: float = WEEKLY_WARN_THRESHOLD,
+    weekly_warn_threshold: float = 80.0,
     bare: bool = False,
+    bar_windows: dict | None = None,
 ) -> str:
+    bw = bar_windows or {}
     segments: list[str] = []
     if summary:
-        segments.append(_format_claude_segment(summary, weekly_warn_threshold))
+        segments.append(_format_claude_segment(summary, bar_window=bw.get("claude", "max")))
     if openai is not None:
-        segments.append(_format_openai_segment(openai, weekly_warn_threshold))
+        segments.append(_format_openai_segment(openai, bar_window=bw.get("openai", "max")))
     if kimi is not None:
-        segments.append(_format_kimi_segment(kimi, weekly_warn_threshold))
+        segments.append(_format_kimi_segment(kimi, bar_window=bw.get("kimi", "max")))
     if opencode is not None:
-        segments.append(_format_opencode_segment(opencode, weekly_warn_threshold, letter="e"))
+        segments.append(_format_opencode_segment(opencode, letter="e", bar_window=bw.get("opencode", "max")))
     if opencode_go is not None:
-        segments.append(_format_opencode_segment(opencode_go, weekly_warn_threshold, letter="g"))
+        segments.append(_format_opencode_segment(opencode_go, letter="g", bar_window=bw.get("opencode-go", "max")))
     return " ".join(segments)

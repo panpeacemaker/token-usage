@@ -89,8 +89,8 @@ token-usage --statusbar                       # "c19%@02:10 o0%w100%@Tue21:28 k2
 token-usage --statusbar --only claude         # "c19%@02:10"
 token-usage --statusbar --only chatgpt        # "o0%w100%@Tue21:28"
 token-usage --statusbar --only kimi           # "k25%@02:54"
-token-usage --statusbar --only opencode       # "e12%@14:20"
-token-usage --statusbar --only opencode-go    # "g25%@14:20"
+token-usage --statusbar --only opencode       # "e12%~14:20"
+token-usage --statusbar --only opencode-go    # "g25%~14:20"
 token-usage --statusbar --only claude,kimi    # "c19%@02:10 k25%@02:54"
 token-usage --detail                          # multi-line detail (also honours --only)
 token-usage --detail --only kimi              # Kimi section only, no other noise
@@ -112,26 +112,37 @@ token-usage --version                         # print version
 ### Compact format
 
 ```text
-<letter><pct>%[*][@HH:MM][w<week_pct>%@<weekday><HH:MM>]
+<letter><pct>%[*][@HH:MM]
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `<letter>` | `c` Claude, `o` ChatGPT, `k` Kimi, `e` OpenCode Zen, `g` OpenCode Go |
-| `<pct>%` | Current short-window usage, 5-hour for Claude/Kimi/OpenCode, primary for ChatGPT |
+| `<pct>%` | **Highest valid quota window** (5-hour or weekly). Weekly pressure is never masked by an empty short window |
 | `*` | Stale marker, Claude only, when serving cached statusline data |
-| `@HH:MM` | Local time the short window resets. Hidden when `week_pct >= 100`, because the short reset is irrelevant once weekly is exhausted |
-| `w<week_pct>%@<weekday><HH:MM>` | Weekly warning suffix. Only appears when weekly hits the **80% threshold** |
+| `@HH:MM` | Local time the driving window resets. Belongs to the same window that supplied `<pct>%` |
+| `~HH:MM` | Approximate reset for **rolling** windows (OpenCode only). The time slides as the oldest entry ages out |
 
-Segments are space-separated.
+Segments are space-separated. `--detail` marks the driving window with `← bar`.
+
+#### Pinning the driving window
+
+By default, the statusbar segment for each provider shows the higher of its two windows (e.g. ChatGPT picks `primary` or `weekly` whichever is higher). To force a specific window — e.g. always show ChatGPT's `primary` to match the web UI — set `bar_window` in the provider's table of `config.toml`:
+
+```toml
+[openai]
+bar_window = "primary"   # "max" | "primary" | "weekly"
+```
+
+Allowed values per provider: Claude `5h` / `7d`; ChatGPT `primary` / `weekly`; Kimi / OpenCode / OpenCode Go `5h` / `weekly`. `max` is the default and picks the higher of the two. An invalid value falls back to `max`. If the pinned window is expired or missing, the segment falls back to `max` so the bar never shows stale data. The `--detail` `← bar` marker follows the same rule, so statusbar and detail always agree.
 
 Examples:
 
 | State | Output |
 | --- | --- |
-| Healthy weekly (< 80%) | `c19%@02:10` |
-| Weekly warning triggered | `c30%@02:10w85%@Mon22:00` |
-| Weekly maxed (== 100%) | `o0%w100%@Tue21:28` |
+| 5-hour is the max | `c19%@02:10` |
+| Weekly higher than 5-hour | `g4%~21:28` |
+| Weekly maxed (== 100%) | `o100%@Tue21:28` |
 | Stale Claude data | `c47%*@02:10` |
 | Provider unreachable | `k err` |
 
@@ -172,6 +183,7 @@ Copy `config.example.toml` to `~/.config/token-usage/config.toml`.
 plan = "max5"
 weekly_reset_weekday = 0      # 0=Mon ... 6=Sun
 weekly_reset_hour_local = 22  # local timezone
+bar_window = "max"            # max | 5h | 7d
 
 [claude.limits.pro]            # optional override per plan
 tokens_5h = 25000000
@@ -181,10 +193,12 @@ messages_weekly = 250
 [openai]
 enabled = true
 browser = "zen"                # firefox | zen | chrome | chromium | brave
+bar_window = "max"            # max | primary | weekly
 
 [kimi]
 enabled = true
 browser = "zen"
+bar_window = "max"            # max | 5h | weekly
 
 [opencode]
 enabled = false                      # OpenCode Zen — letter `e`
@@ -194,6 +208,7 @@ primary_window_hours = 5
 weekly_window_days = 7
 primary_limit_tokens = 25000000      # required when enabled
 weekly_limit_tokens = 560000000
+bar_window = "max"                  # max | 5h | weekly
 
 [opencode-go]
 enabled = false                      # OpenCode Go — letter `g`
@@ -201,6 +216,7 @@ primary_window_hours = 5
 weekly_window_days = 7
 primary_limit_tokens = 25000000      # required when enabled
 weekly_limit_tokens = 560000000
+bar_window = "max"                  # max | 5h | weekly
 
 [cache]
 ttl_seconds = 300

@@ -9,10 +9,10 @@ WEEKLY_RESET_DT = datetime(2026, 4, 14, 22, 0, 0, tzinfo=timezone.utc)
 WEEKLY_RESET_EPOCH = int(WEEKLY_RESET_DT.timestamp())
 
 RESET_HHMM = RESET.astimezone().strftime("%H:%M")
-WEEKLY_RESET_DAYHHMM = WEEKLY_RESET_DT.astimezone().strftime("%a%H:%M")
+WEEKLY_RESET_HHMM = WEEKLY_RESET_DT.astimezone().strftime("%H:%M")
 
 
-def test_baseline_format_includes_5h_reset() -> None:
+def test_baseline_format_5h_drives() -> None:
     summary = {
         "available": True,
         "five_hour_pct": 55.0,
@@ -47,43 +47,31 @@ def test_with_openai_no_openai_reset() -> None:
     assert result == f"c55%@{RESET_HHMM} o0%"
 
 
-def test_weekly_warn_above_threshold() -> None:
+def test_weekly_higher_than_5h_drives() -> None:
     summary = {
         "available": True,
-        "five_hour_pct": 55.0,
+        "five_hour_pct": 10.0,
         "seven_day_pct": 87.5,
         "five_hour_resets_at": RESET,
-        "seven_day_resets_at": None,
+        "seven_day_resets_at": WEEKLY_RESET_DT,
     }
     result = format_compact(summary, None)
-    assert result == f"c55%@{RESET_HHMM}w88%"
+    assert result == f"c88%@{WEEKLY_RESET_HHMM}"
 
 
-def test_weekly_warn_threshold_is_80() -> None:
+def test_5h_equal_to_weekly_5h_wins_tie() -> None:
     summary = {
         "available": True,
-        "five_hour_pct": 10.0,
-        "seven_day_pct": 80.0,
+        "five_hour_pct": 50.0,
+        "seven_day_pct": 50.0,
         "five_hour_resets_at": RESET,
         "seven_day_resets_at": WEEKLY_RESET_DT,
     }
     result = format_compact(summary, None)
-    assert result == f"c10%@{RESET_HHMM}w80%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"c50%@{RESET_HHMM}"
 
 
-def test_just_below_80_no_weekly_warn() -> None:
-    summary = {
-        "available": True,
-        "five_hour_pct": 10.0,
-        "seven_day_pct": 79.9,
-        "five_hour_resets_at": RESET,
-        "seven_day_resets_at": WEEKLY_RESET_DT,
-    }
-    result = format_compact(summary, None)
-    assert result == f"c10%@{RESET_HHMM}"
-
-
-def test_weekly_at_100_hides_5h_reset() -> None:
+def test_weekly_maxed_shows_weekly_reset() -> None:
     summary = {
         "available": True,
         "five_hour_pct": 30.0,
@@ -92,19 +80,7 @@ def test_weekly_at_100_hides_5h_reset() -> None:
         "seven_day_resets_at": WEEKLY_RESET_DT,
     }
     result = format_compact(summary, None)
-    assert result == f"c30%w100%@{WEEKLY_RESET_DAYHHMM}"
-
-
-def test_weekly_at_99_keeps_5h_reset() -> None:
-    summary = {
-        "available": True,
-        "five_hour_pct": 30.0,
-        "seven_day_pct": 99.0,
-        "five_hour_resets_at": RESET,
-        "seven_day_resets_at": WEEKLY_RESET_DT,
-    }
-    result = format_compact(summary, None)
-    assert result == f"c30%@{RESET_HHMM}w99%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"c100%@{WEEKLY_RESET_HHMM}"
 
 
 def test_claude_error() -> None:
@@ -154,11 +130,11 @@ def test_openai_err_segment_visible_on_failure() -> None:
     assert "o err" in result
 
 
-def test_openai_weekly_warn_above_threshold() -> None:
+def test_openai_weekly_drives_when_higher() -> None:
     summary = {"available": True, "five_hour_pct": 1.0, "seven_day_pct": 1.0, "five_hour_resets_at": RESET}
-    openai = {"available": True, "primary_pct": 0.0, "weekly_pct": 92.0}
+    openai = {"available": True, "primary_pct": 0.0, "weekly_pct": 92.0, "weekly_reset_at": WEEKLY_RESET_EPOCH}
     result = format_compact(summary, openai)
-    assert "o0%w92%" in result
+    assert "o92%" in result
 
 
 def test_openai_5h_reset_rendered_when_present() -> None:
@@ -214,7 +190,7 @@ def test_no_segments_returns_empty_string() -> None:
     assert format_compact({}, None, None) == ""
 
 
-def test_three_provider_combined_matches_target_visual() -> None:
+def test_three_provider_combined() -> None:
     summary = {
         "available": True,
         "five_hour_pct": 73.0,
@@ -231,11 +207,11 @@ def test_three_provider_combined_matches_target_visual() -> None:
     result = format_compact(summary, openai, kimi)
     parts = result.split(" ")
     assert parts[0] == f"c73%@{RESET_HHMM}"
-    assert parts[1] == f"o0%w100%@{WEEKLY_RESET_DAYHHMM}"
+    assert parts[1] == f"o100%@{WEEKLY_RESET_HHMM}"
     assert parts[2] == "k0%"
 
 
-def test_claude_weekly_reset_shown_when_warn() -> None:
+def test_claude_weekly_drives_when_higher() -> None:
     summary = {
         "available": True,
         "five_hour_pct": 30.0,
@@ -244,22 +220,22 @@ def test_claude_weekly_reset_shown_when_warn() -> None:
         "seven_day_resets_at": WEEKLY_RESET_DT,
     }
     result = format_compact(summary, None)
-    assert result == f"c30%@{RESET_HHMM}w92%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"c92%@{WEEKLY_RESET_HHMM}"
 
 
-def test_claude_weekly_reset_hidden_when_below_threshold() -> None:
+def test_claude_5h_drives_when_higher() -> None:
     summary = {
         "available": True,
-        "five_hour_pct": 30.0,
+        "five_hour_pct": 60.0,
         "seven_day_pct": 50.0,
         "five_hour_resets_at": RESET,
         "seven_day_resets_at": WEEKLY_RESET_DT,
     }
     result = format_compact(summary, None)
-    assert result == f"c30%@{RESET_HHMM}"
+    assert result == f"c60%@{RESET_HHMM}"
 
 
-def test_openai_weekly_reset_shown_when_warn() -> None:
+def test_openai_weekly_drives() -> None:
     openai = {
         "available": True,
         "primary_pct": 0.0,
@@ -267,10 +243,10 @@ def test_openai_weekly_reset_shown_when_warn() -> None:
         "weekly_reset_at": WEEKLY_RESET_EPOCH,
     }
     result = format_compact({}, openai)
-    assert result == f"o0%w100%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"o100%@{WEEKLY_RESET_HHMM}"
 
 
-def test_kimi_weekly_reset_shown_when_warn() -> None:
+def test_kimi_weekly_drives() -> None:
     kimi = {
         "available": True,
         "primary_pct": 0.0,
@@ -278,7 +254,7 @@ def test_kimi_weekly_reset_shown_when_warn() -> None:
         "weekly_reset_at": WEEKLY_RESET_EPOCH,
     }
     result = format_compact({}, None, kimi)
-    assert result == f"k0%w95%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"k95%@{WEEKLY_RESET_HHMM}"
 
 
 def test_opencode_segment_rendered_when_provided() -> None:
@@ -289,7 +265,7 @@ def test_opencode_segment_rendered_when_provided() -> None:
         "primary_reset_at": int(RESET.timestamp()),
     }
     result = format_compact({}, None, None, opencode)
-    assert result == f"e12%@{RESET_HHMM}"
+    assert result == f"e12%~{RESET_HHMM}"
 
 
 def test_opencode_err_segment_visible_on_failure() -> None:
@@ -298,7 +274,7 @@ def test_opencode_err_segment_visible_on_failure() -> None:
     assert result == "e err"
 
 
-def test_opencode_weekly_warn_above_threshold() -> None:
+def test_opencode_weekly_drives_when_higher() -> None:
     opencode = {
         "available": True,
         "primary_pct": 30.0,
@@ -307,7 +283,7 @@ def test_opencode_weekly_warn_above_threshold() -> None:
         "weekly_reset_at": WEEKLY_RESET_EPOCH,
     }
     result = format_compact({}, None, None, opencode)
-    assert result == f"e30%@{RESET_HHMM}w90%@{WEEKLY_RESET_DAYHHMM}"
+    assert result == f"e90%~{WEEKLY_RESET_HHMM}"
 
 
 def test_opencode_alongside_other_providers() -> None:
@@ -331,7 +307,7 @@ def test_opencode_go_segment_rendered_when_provided() -> None:
         "primary_reset_at": int(RESET.timestamp()),
     }
     result = format_compact({}, None, None, None, opencode_go)
-    assert result == f"g25%@{RESET_HHMM}"
+    assert result == f"g25%~{RESET_HHMM}"
 
 
 def test_opencode_go_err_segment_visible_on_failure() -> None:
@@ -347,7 +323,7 @@ def test_opencode_and_go_both_rendered() -> None:
     assert result == "e1% g25%"
 
 
-def test_weekly_reset_missing_does_not_break_rendering() -> None:
+def test_weekly_reset_missing_no_suffix() -> None:
     summary = {
         "available": True,
         "five_hour_pct": 30.0,
@@ -356,4 +332,98 @@ def test_weekly_reset_missing_does_not_break_rendering() -> None:
         "seven_day_resets_at": None,
     }
     result = format_compact(summary, None)
-    assert result == f"c30%@{RESET_HHMM}w92%"
+    assert result == f"c92%"
+
+
+def test_claude_expired_5h_weekly_drives() -> None:
+    summary = {
+        "available": True,
+        "five_hour_pct": 0.0,
+        "five_hour_resets_at": None,
+        "_five_hour_expired": True,
+        "seven_day_pct": 45.0,
+        "seven_day_resets_at": WEEKLY_RESET_DT,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c45%@{WEEKLY_RESET_HHMM}"
+
+
+def test_claude_expired_weekly_5h_drives() -> None:
+    summary = {
+        "available": True,
+        "five_hour_pct": 30.0,
+        "five_hour_resets_at": RESET,
+        "_seven_day_expired": True,
+        "seven_day_pct": 0.0,
+        "seven_day_resets_at": None,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c30%@{RESET_HHMM}"
+
+
+def test_claude_both_expired_shows_zero() -> None:
+    summary = {
+        "available": True,
+        "five_hour_pct": 0.0,
+        "five_hour_resets_at": None,
+        "_five_hour_expired": True,
+        "seven_day_pct": 0.0,
+        "seven_day_resets_at": None,
+        "_seven_day_expired": True,
+    }
+    result = format_compact(summary, None)
+    assert result == "c0%"
+
+
+def test_kimi_weekly_higher_drives() -> None:
+    kimi = {
+        "available": True,
+        "primary_pct": 6.0,
+        "weekly_pct": 23.0,
+        "primary_reset_at": int(RESET.timestamp()),
+        "weekly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, None, kimi)
+    assert result == f"k23%@{WEEKLY_RESET_HHMM}"
+
+
+def test_openai_primary_higher_drives() -> None:
+    openai = {
+        "available": True,
+        "primary_pct": 50.0,
+        "weekly_pct": 30.0,
+        "primary_reset_at": int(RESET.timestamp()),
+        "weekly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, openai)
+    assert result == f"o50%@{RESET_HHMM}"
+
+
+def test_opencode_go_weekly_higher_drives() -> None:
+    opencode_go = {
+        "available": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 4.1,
+        "weekly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, None, None, None, opencode_go)
+    assert result == f"g4%~{WEEKLY_RESET_HHMM}"
+
+
+def test_both_windows_error() -> None:
+    openai = {"available": False, "error": "network down"}
+    result = format_compact({}, openai)
+    assert result == "o err"
+
+
+def test_stale_weekly_drives() -> None:
+    summary = {
+        "available": True,
+        "_stale": True,
+        "five_hour_pct": 10.0,
+        "five_hour_resets_at": RESET,
+        "seven_day_pct": 85.0,
+        "seven_day_resets_at": WEEKLY_RESET_DT,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c85%*@{WEEKLY_RESET_HHMM}"
