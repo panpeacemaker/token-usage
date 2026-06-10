@@ -50,13 +50,92 @@ def _fmt_age_seconds(seconds: float) -> str:
     return f"{seconds // 3600}h{(seconds % 3600) // 60}m"
 
 
-def _claude_section(summary: dict) -> list[str]:
+def _fmt_source_detail(source_detail: dict) -> str:
+    chosen = source_detail.get("chosen", "unknown")
+    rejected = source_detail.get("rejected", [])
+    parts: list[str] = []
+    for r in rejected:
+        src = r.get("source", "")
+        reason = r.get("reason", "")
+        short = reason
+        if reason == "file missing":
+            short = "missing"
+        elif reason and reason.startswith("file age"):
+            short = "stale"
+        elif reason and "window expired" in reason:
+            short = "expired"
+        elif reason and reason.startswith("unavailable:"):
+            short = reason.split(":", 1)[1].strip()
+        elif reason == "unavailable":
+            short = "unavailable"
+        parts.append(f"{src}: {short}")
+    if parts:
+        return f"source: {chosen} ({'; '.join(parts)})"
+    return f"source: {chosen}"
+
+
+def _select_bar_window(
+    data: dict,
+    windows: list[tuple[str, str, str, str | None]],
+    bar_window: str = "max",
+) -> tuple[float, any, str] | None:
+    """Return (pct, reset, label) for the driving window, or None.
+
+    Mirrors the statusbar helper: ``bar_window="max"`` (default) takes the
+    max-pct rule; any other valid label picks that specific window when it
+    has a usable pct, otherwise falls back to max. See statusbar.py for the
+    full contract.
+    """
+    if bar_window != "max":
+        for pct_field, reset_field, label, expired_field in windows:
+            if label != bar_window:
+                continue
+            if expired_field and data.get(expired_field):
+                break
+            pct = data.get(pct_field)
+            if pct is None:
+                break
+            try:
+                return (float(pct), data.get(reset_field), label)
+            except (TypeError, ValueError):
+                break
+    best = None
+    for pct_field, reset_field, label, expired_field in windows:
+        if expired_field and data.get(expired_field):
+            continue
+        pct = data.get(pct_field)
+        if pct is None:
+            continue
+        try:
+            pct_val = float(pct)
+        except (TypeError, ValueError):
+            continue
+        reset = data.get(reset_field)
+        if best is None or pct_val > best[0]:
+            best = (pct_val, reset, label)
+    return best
+
+
+def _bar_marker(label: str, bar_window: tuple[float, any, str] | None) -> str:
+    if bar_window is None:
+        return ""
+    _pct, _reset, bar_label = bar_window
+    if bar_label == label:
+        return "  ← bar"
+    return ""
+
+
+def _claude_section(summary: dict, bar_window: str = "max") -> list[str]:
     lines: list[str] = []
     sub = summary.get("subscription_type", "unknown")
     tier = summary.get("rate_limit_tier", "unknown")
     stale_marker = " [STALE]" if summary.get("_stale") else ""
     lines.append(f"Claude ({sub}) — {tier}{stale_marker}")
     lines.append(DIVIDER)
+
+    source_detail = summary.get("_source_detail")
+    if source_detail:
+        lines.append(f"  {_fmt_source_detail(source_detail)}")
 
     if summary.get("_stale"):
         reason = summary.get("_stale_reason", "unknown")
@@ -80,9 +159,25 @@ def _claude_section(summary: dict) -> list[str]:
         five_reset = summary.get("five_hour_resets_at")
         seven_pct = summary.get("seven_day_pct", 0)
         seven_reset = summary.get("seven_day_resets_at")
+        five_expired = summary.get("_five_hour_expired")
+        seven_expired = summary.get("_seven_day_expired")
 
-        lines.append(f"  ⏱  5-hour:  {five_pct:5.1f}%   resets {_fmt_local_time(five_reset)}")
-        lines.append(f"  📅 7-day:   {seven_pct:5.1f}%   resets {_fmt_local_time(seven_reset)}")
+        windows = [
+            ("five_hour_pct", "five_hour_resets_at", "5h", "_five_hour_expired"),
+            ("seven_day_pct", "seven_day_resets_at", "7d", "_seven_day_expired"),
+        ]
+        bar = _select_bar_window(summary, windows, bar_window=bar_window)
+
+        if five_expired:
+            lines.append("  ⏱  5-hour:  ?       expired")
+        else:
+            marker = _bar_marker("5h", bar)
+            lines.append(f"  ⏱  5-hour:  {five_pct:5.1f}%   resets {_fmt_local_time(five_reset)}{marker}")
+        if seven_expired:
+            lines.append("  📅 7-day:   ?       expired")
+        else:
+            marker = _bar_marker("7d", bar)
+            lines.append(f"  📅 7-day:   {seven_pct:5.1f}%   resets {_fmt_local_time(seven_reset)}{marker}")
 
         opus_pct = summary.get("seven_day_opus_pct")
         if opus_pct is not None:
@@ -99,8 +194,10 @@ def _claude_section(summary: dict) -> list[str]:
         lines.append("Local JSONL stats:")
         if ab.get("present"):
             tokens = ab.get("tokens", 0)
+            cache_read = ab.get("cache_read_tokens", 0)
             models = ab.get("models") or {}
-            lines.append(f"  current block: {_fmt_int(tokens)} tokens")
+            cache_part = f" (+{_fmt_int(cache_read)} cache-read)" if cache_read else ""
+            lines.append(f"  current block: {_fmt_int(tokens)} tokens{cache_part}")
             if models:
                 merged: dict[str, int] = {}
                 for m, t in models.items():
@@ -111,46 +208,71 @@ def _claude_section(summary: dict) -> list[str]:
                     lines.append(f"     {short}: {_fmt_int(t)}")
         wk_msgs = wk.get("messages", 0)
         wk_toks = wk.get("tokens", 0)
-        if wk_toks or wk_msgs:
-            lines.append(f"  this week: {wk_msgs} msgs / {_fmt_int(wk_toks)} tokens")
+        wk_cache = wk.get("cache_read_tokens", 0)
+        if wk_toks or wk_msgs or wk_cache:
+            cache_part = f" (+{_fmt_int(wk_cache)} cache-read)" if wk_cache else ""
+            lines.append(f"  this week: {wk_msgs} msgs / {_fmt_int(wk_toks)} tokens{cache_part}")
 
     return lines
 
 
-def _openai_section(openai: dict) -> list[str]:
+def _openai_section(openai: dict, bar_window: str = "max") -> list[str]:
     lines: list[str] = ["🟢 ChatGPT Plus", DIVIDER]
     if openai.get("available"):
         primary_reset = _fmt_local_time(_epoch_to_dt(openai.get("primary_reset_at")))
         weekly_reset = _fmt_local_time(_epoch_to_dt(openai.get("weekly_reset_at")))
-        lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
+        windows = [
+            ("primary_pct", "primary_reset_at", "primary", None),
+            ("weekly_pct", "weekly_reset_at", "weekly", None),
+        ]
+        bar = _select_bar_window(openai, windows, bar_window=bar_window)
+        marker = _bar_marker("primary", bar)
+        lines.append(f"  primary: {openai.get('primary_pct', 0):5.1f}%   resets {primary_reset}{marker}")
         if openai.get("weekly_reset_at") is not None or openai.get("weekly_pct"):
-            lines.append(f"  weekly:  {openai.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+            marker = _bar_marker("weekly", bar)
+            lines.append(f"  weekly:  {openai.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}{marker}")
         lines.append(f"  review:  {openai.get('review_pct', 0):5.1f}%")
     else:
         lines.append(f"  ⚠ unavailable: {openai.get('error', 'not configured')}")
     return lines
 
 
-def _kimi_section(kimi: dict) -> list[str]:
+def _kimi_section(kimi: dict, bar_window: str = "max") -> list[str]:
     lines: list[str] = ["🟣 Kimi Code", DIVIDER]
     if kimi.get("available"):
         primary_reset = _fmt_local_time(_epoch_to_dt(kimi.get("primary_reset_at")))
         weekly_reset = _fmt_local_time(_epoch_to_dt(kimi.get("weekly_reset_at")))
-        lines.append(f"  5-hour:  {kimi.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
-        lines.append(f"  weekly:  {kimi.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+        windows = [
+            ("primary_pct", "primary_reset_at", "5h", None),
+            ("weekly_pct", "weekly_reset_at", "weekly", None),
+        ]
+        bar = _select_bar_window(kimi, windows, bar_window=bar_window)
+        marker = _bar_marker("5h", bar)
+        lines.append(f"  5-hour:  {kimi.get('primary_pct', 0):5.1f}%   resets {primary_reset}{marker}")
+        marker = _bar_marker("weekly", bar)
+        lines.append(f"  weekly:  {kimi.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}{marker}")
     else:
         lines.append(f"  ⚠ unavailable: {kimi.get('error', 'not configured')}")
     return lines
 
 
-def _opencode_section(opencode: dict, label: str = "OpenCode") -> list[str]:
+def _opencode_section(opencode: dict, label: str = "OpenCode", bar_window: str = "max") -> list[str]:
     pid = opencode.get("provider_id", "opencode")
     lines: list[str] = [f"🟠 {label} ({pid})", DIVIDER]
     if opencode.get("available"):
         primary_reset = _fmt_local_time(_epoch_to_dt(opencode.get("primary_reset_at")))
         weekly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("weekly_reset_at")))
-        lines.append(f"  5-hour:  {opencode.get('primary_pct', 0):5.1f}%   resets {primary_reset}")
-        lines.append(f"  weekly:  {opencode.get('weekly_pct', 0):5.1f}%   resets {weekly_reset}")
+        primary_label = f"~{primary_reset} (rolling)" if primary_reset != "—" else "—"
+        weekly_label = f"~{weekly_reset} (rolling)" if weekly_reset != "—" else "—"
+        windows = [
+            ("primary_pct", "primary_reset_at", "5h", None),
+            ("weekly_pct", "weekly_reset_at", "weekly", None),
+        ]
+        bar = _select_bar_window(opencode, windows, bar_window=bar_window)
+        marker = _bar_marker("5h", bar)
+        lines.append(f"  5-hour:  {opencode.get('primary_pct', 0):5.1f}%   resets {primary_label}{marker}")
+        marker = _bar_marker("weekly", bar)
+        lines.append(f"  weekly:  {opencode.get('weekly_pct', 0):5.1f}%   resets {weekly_label}{marker}")
         ptoks = opencode.get("primary_tokens", 0)
         plim = opencode.get("primary_limit_tokens", 0)
         wtoks = opencode.get("weekly_tokens", 0)
@@ -170,16 +292,18 @@ def format_detail(
     kimi: dict | None = None,
     opencode: dict | None = None,
     opencode_go: dict | None = None,
+    bar_windows: dict | None = None,
 ) -> str:
+    bw = bar_windows or {}
     sections: list[list[str]] = []
     if summary:
-        sections.append(_claude_section(summary))
+        sections.append(_claude_section(summary, bar_window=bw.get("claude", "max")))
     if openai is not None:
-        sections.append(_openai_section(openai))
+        sections.append(_openai_section(openai, bar_window=bw.get("openai", "max")))
     if kimi is not None:
-        sections.append(_kimi_section(kimi))
+        sections.append(_kimi_section(kimi, bar_window=bw.get("kimi", "max")))
     if opencode is not None:
-        sections.append(_opencode_section(opencode, label="OpenCode"))
+        sections.append(_opencode_section(opencode, label="OpenCode", bar_window=bw.get("opencode", "max")))
     if opencode_go is not None:
-        sections.append(_opencode_section(opencode_go, label="OpenCode Go"))
+        sections.append(_opencode_section(opencode_go, label="OpenCode Go", bar_window=bw.get("opencode-go", "max")))
     return "\n\n".join("\n".join(section) for section in sections)
