@@ -43,8 +43,10 @@ def _fetch_opencode(cfg: cfg_mod.Config) -> dict | None:
         db_path=db_path,
         primary_window_hours=cfg.opencode_primary_window_hours,
         weekly_window_days=cfg.opencode_weekly_window_days,
+        monthly_window_days=cfg.opencode_monthly_window_days,
         primary_limit_tokens=cfg.opencode_primary_limit_tokens,
         weekly_limit_tokens=cfg.opencode_weekly_limit_tokens,
+        monthly_limit_tokens=cfg.opencode_monthly_limit_tokens,
     )
     return _normalize.normalize_windows(asdict(result), _normalize.OPENCODE_WINDOW_FIELDS)
 
@@ -62,8 +64,10 @@ def _fetch_opencode_go(cfg: cfg_mod.Config) -> dict | None:
         db_path=db_path,
         primary_window_hours=cfg.opencode_go_primary_window_hours,
         weekly_window_days=cfg.opencode_go_weekly_window_days,
+        monthly_window_days=cfg.opencode_go_monthly_window_days,
         primary_limit_tokens=cfg.opencode_go_primary_limit_tokens,
         weekly_limit_tokens=cfg.opencode_go_weekly_limit_tokens,
+        monthly_limit_tokens=cfg.opencode_go_monthly_limit_tokens,
     )
     return _normalize.normalize_windows(asdict(result), _normalize.OPENCODE_WINDOW_FIELDS)
 

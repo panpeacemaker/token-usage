@@ -24,10 +24,14 @@ class OpencodeUsage:
     primary_reset_at: int | None = None
     weekly_pct: float = 0.0
     weekly_reset_at: int | None = None
+    monthly_pct: float = 0.0
+    monthly_reset_at: int | None = None
     primary_tokens: int = 0
     weekly_tokens: int = 0
+    monthly_tokens: int = 0
     primary_limit_tokens: int = 0
     weekly_limit_tokens: int = 0
+    monthly_limit_tokens: int = 0
     window_kind: str = "rolling"
 
 
@@ -91,8 +95,10 @@ def fetch_opencode(
     db_path: Path | None = None,
     primary_window_hours: int = 5,
     weekly_window_days: int = 7,
+    monthly_window_days: int = 30,
     primary_limit_tokens: int = 0,
     weekly_limit_tokens: int = 0,
+    monthly_limit_tokens: int = 0,
     now: int | None = None,
 ) -> OpencodeUsage:
     path = db_path or DEFAULT_DB_PATH
@@ -119,13 +125,18 @@ def fetch_opencode(
             provider_id=provider_id,
         )
 
+    epoch = int(now if now is not None else time.time())
+    monthly_seconds = monthly_window_days * 86400
+    oldest_needed_ms = (epoch - monthly_seconds) * 1000
+
     rows: list[tuple[int, int]] = []
     try:
         cursor = conn.execute(
             "SELECT time_created, data FROM message "
             "WHERE json_extract(data, '$.role') = 'assistant' "
-            "AND json_extract(data, '$.providerID') = ?",
-            (provider_id,),
+            "AND json_extract(data, '$.providerID') = ? "
+            "AND time_created >= ?",
+            (provider_id, oldest_needed_ms),
         )
         for ts_ms, data_str in cursor:
             try:
@@ -149,12 +160,12 @@ def fetch_opencode(
     finally:
         conn.close()
 
-    epoch = int(now if now is not None else time.time())
     primary_seconds = primary_window_hours * 3600
     weekly_seconds = weekly_window_days * 86400
 
     primary_tokens, primary_reset = _bucket(rows, epoch - primary_seconds, primary_seconds)
     weekly_tokens, weekly_reset = _bucket(rows, epoch - weekly_seconds, weekly_seconds)
+    monthly_tokens, monthly_reset = _bucket(rows, epoch - monthly_seconds, monthly_seconds)
 
     return OpencodeUsage(
         available=True,
@@ -163,8 +174,12 @@ def fetch_opencode(
         primary_reset_at=primary_reset,
         weekly_pct=_pct(weekly_tokens, weekly_limit_tokens),
         weekly_reset_at=weekly_reset,
+        monthly_pct=_pct(monthly_tokens, monthly_limit_tokens),
+        monthly_reset_at=monthly_reset,
         primary_tokens=primary_tokens,
         weekly_tokens=weekly_tokens,
+        monthly_tokens=monthly_tokens,
         primary_limit_tokens=primary_limit_tokens,
         weekly_limit_tokens=weekly_limit_tokens,
+        monthly_limit_tokens=monthly_limit_tokens,
     )

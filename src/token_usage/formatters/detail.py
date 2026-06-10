@@ -262,25 +262,36 @@ def _opencode_section(opencode: dict, label: str = "OpenCode", bar_window: str =
     if opencode.get("available"):
         primary_reset = _fmt_local_time(_epoch_to_dt(opencode.get("primary_reset_at")))
         weekly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("weekly_reset_at")))
+        monthly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("monthly_reset_at")))
         primary_label = f"~{primary_reset} (rolling)" if primary_reset != "—" else "—"
         weekly_label = f"~{weekly_reset} (rolling)" if weekly_reset != "—" else "—"
+        monthly_label = f"~{monthly_reset} (rolling)" if monthly_reset != "—" else "—"
         windows = [
             ("primary_pct", "primary_reset_at", "5h", None),
             ("weekly_pct", "weekly_reset_at", "weekly", None),
+            ("monthly_pct", "monthly_reset_at", "monthly", None),
         ]
         bar = _select_bar_window(opencode, windows, bar_window=bar_window)
         marker = _bar_marker("5h", bar)
         lines.append(f"  5-hour:  {opencode.get('primary_pct', 0):5.1f}%   resets {primary_label}{marker}")
         marker = _bar_marker("weekly", bar)
         lines.append(f"  weekly:  {opencode.get('weekly_pct', 0):5.1f}%   resets {weekly_label}{marker}")
+        mlim = opencode.get("monthly_limit_tokens", 0)
+        if mlim:
+            marker = _bar_marker("monthly", bar)
+            lines.append(f"  monthly: {opencode.get('monthly_pct', 0):5.1f}%   resets {monthly_label}{marker}")
+        else:
+            lines.append(f"  monthly: —       resets {monthly_label}")
         ptoks = opencode.get("primary_tokens", 0)
         plim = opencode.get("primary_limit_tokens", 0)
         wtoks = opencode.get("weekly_tokens", 0)
         wlim = opencode.get("weekly_limit_tokens", 0)
+        mtoks = opencode.get("monthly_tokens", 0)
         if plim:
             lines.append(f"     5h tokens:   {_fmt_int(ptoks)} / {_fmt_int(plim)}")
         if wlim:
             lines.append(f"     wk tokens:   {_fmt_int(wtoks)} / {_fmt_int(wlim)}")
+        lines.append(f"     mo tokens:   {_fmt_int(mtoks)} / {_fmt_int(mlim) if mlim else '—'}")
     else:
         lines.append(f"  ⚠ unavailable: {opencode.get('error', 'not configured')}")
     return lines

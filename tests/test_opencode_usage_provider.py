@@ -227,7 +227,89 @@ def test_dataclass_fields():
     u = OpencodeUsage(available=True)
     assert hasattr(u, "primary_pct")
     assert hasattr(u, "weekly_pct")
+    assert hasattr(u, "monthly_pct")
     assert hasattr(u, "primary_tokens")
     assert hasattr(u, "weekly_tokens")
+    assert hasattr(u, "monthly_tokens")
     assert hasattr(u, "primary_limit_tokens")
     assert hasattr(u, "weekly_limit_tokens")
+    assert hasattr(u, "monthly_limit_tokens")
+
+
+def test_monthly_window_excludes_35d_rows(tmp_path: Path) -> None:
+    db = tmp_path / "opencode.db"
+    conn = _create_db(db)
+    _insert(conn, "m5d", (NOW - 5 * 86400) * 1000, _opencode_msg(input_t=100))
+    _insert(conn, "m20d", (NOW - 20 * 86400) * 1000, _opencode_msg(input_t=200))
+    _insert(conn, "m35d", (NOW - 35 * 86400) * 1000, _opencode_msg(input_t=400))
+    conn.commit()
+    conn.close()
+
+    result = fetch_opencode(
+        db_path=db,
+        primary_limit_tokens=1000,
+        weekly_limit_tokens=10000,
+        monthly_limit_tokens=100000,
+        now=NOW,
+    )
+    assert result.available
+    assert result.monthly_tokens == 300
+    assert result.monthly_pct == 0.3
+
+
+def test_monthly_limit_unset_still_returns_tokens_and_no_error(tmp_path: Path) -> None:
+    db = tmp_path / "opencode.db"
+    conn = _create_db(db)
+    _insert(conn, "m1", (NOW - 86400) * 1000, _opencode_msg(input_t=500))
+    conn.commit()
+    conn.close()
+
+    result = fetch_opencode(
+        db_path=db,
+        primary_limit_tokens=1000,
+        weekly_limit_tokens=10000,
+        monthly_limit_tokens=0,
+        now=NOW,
+    )
+    assert result.available
+    assert result.monthly_tokens == 500
+    assert result.monthly_pct == 0.0
+    assert result.monthly_limit_tokens == 0
+
+
+def test_monthly_reset_at_uses_oldest_event_plus_window(tmp_path: Path) -> None:
+    db = tmp_path / "opencode.db"
+    conn = _create_db(db)
+    oldest_ms = (NOW - 10 * 86400) * 1000
+    _insert(conn, "m1", oldest_ms, _opencode_msg(input_t=100))
+    _insert(conn, "m2", (NOW - 86400) * 1000, _opencode_msg(input_t=100))
+    conn.commit()
+    conn.close()
+
+    result = fetch_opencode(
+        db_path=db,
+        primary_limit_tokens=1000,
+        weekly_limit_tokens=10000,
+        monthly_limit_tokens=100000,
+        now=NOW,
+    )
+    assert result.monthly_reset_at == int(oldest_ms / 1000) + 30 * 86400
+
+
+def test_monthly_window_is_empty_when_no_rows_in_range(tmp_path: Path) -> None:
+    db = tmp_path / "opencode.db"
+    conn = _create_db(db)
+    _insert(conn, "old", (NOW - 31 * 86400) * 1000, _opencode_msg(input_t=999))
+    conn.commit()
+    conn.close()
+
+    result = fetch_opencode(
+        db_path=db,
+        primary_limit_tokens=1000,
+        weekly_limit_tokens=10000,
+        monthly_limit_tokens=100000,
+        now=NOW,
+    )
+    assert result.available
+    assert result.monthly_tokens == 0
+    assert result.monthly_reset_at is None

@@ -36,7 +36,7 @@ bar_window = "max"
 
 [opencode]
 # OpenCode (sst/opencode) Zen usage tracker. Reads ~/.local/share/opencode/opencode.db
-# and aggregates assistant tokens for providerID="opencode" into a 5h + 7d
+# and aggregates assistant tokens for providerID="opencode" into a 5h + 7d + 30d
 # rolling window. There is no public OpenCode quota API, so percentage is computed
 # against the limit_tokens you configure here. Statusbar letter: `e`.
 enabled = false
@@ -44,10 +44,12 @@ provider_id = "opencode"
 db_path = ""                    # empty = ~/.local/share/opencode/opencode.db
 primary_window_hours = 5
 weekly_window_days = 7
+monthly_window_days = 30
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
-# Statusbar driving window. "max" (default) picks the higher of 5h/weekly.
-# Allowed: "max" | "5h" | "weekly"
+monthly_limit_tokens = 0        # 0 = percentage hidden, tokens still shown
+# Statusbar driving window. "max" (default) picks the highest of 5h/weekly/monthly.
+# Allowed: "max" | "5h" | "weekly" | "monthly"
 bar_window = "max"
 
 [opencode-go]
@@ -59,10 +61,12 @@ provider_id = "opencode-go"
 db_path = ""
 primary_window_hours = 5
 weekly_window_days = 7
+monthly_window_days = 30
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
-# Statusbar driving window. "max" (default) picks the higher of 5h/weekly.
-# Allowed: "max" | "5h" | "weekly"
+monthly_limit_tokens = 0        # 0 = percentage hidden, tokens still shown
+# Statusbar driving window. "max" (default) picks the highest of 5h/weekly/monthly.
+# Allowed: "max" | "5h" | "weekly" | "monthly"
 bar_window = "max"
 
 [cache]

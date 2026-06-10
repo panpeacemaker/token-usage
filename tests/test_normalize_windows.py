@@ -97,6 +97,23 @@ def test_opencode_uses_primary_and_weekly():
     assert out["weekly_reset_at"] is None
 
 
+def test_opencode_monthly_expired_rolls_to_zero():
+    p = {
+        "available": True,
+        "primary_pct": 10.0,
+        "primary_reset_at": FUTURE,
+        "weekly_pct": 20.0,
+        "weekly_reset_at": FUTURE,
+        "monthly_pct": 30.0,
+        "monthly_reset_at": PAST,
+    }
+    out = normalize_windows(p, OPENCODE_WINDOW_FIELDS, now=NOW)
+    assert out["monthly_pct"] == 0.0
+    assert out["monthly_reset_at"] is None
+    assert out["primary_pct"] == 10.0
+    assert out["weekly_pct"] == 20.0
+
+
 def test_reset_at_exactly_now_is_treated_as_expired():
     p = {"available": True, "primary_pct": 50.0, "primary_reset_at": NOW}
     out = normalize_windows(p, KIMI_WINDOW_FIELDS, now=NOW)

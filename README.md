@@ -62,7 +62,7 @@ ChatGPT Plus and Kimi Code usage are read directly from each vendor's web API us
 
 ### OpenCode
 
-OpenCode, sst/opencode, has no public quota or billing API, so usage is aggregated from the local SQLite history at `~/.local/share/opencode/opencode.db`. Results are filtered by `providerID`, `opencode` for Zen and `opencode-go` for Go, into rolling 5-hour and 7-day windows.
+OpenCode, sst/opencode, has no public quota or billing API, so usage is aggregated from the local SQLite history at `~/.local/share/opencode/opencode.db`. Results are filtered by `providerID`, `opencode` for Zen and `opencode-go` for Go, into rolling 5-hour, 7-day, and 30-day windows.
 
 Percentages are computed against the token limits configured in `[opencode]`. OpenCode is disabled by default.
 
@@ -134,7 +134,7 @@ By default, the statusbar segment for each provider shows the higher of its two 
 bar_window = "primary"   # "max" | "primary" | "weekly"
 ```
 
-Allowed values per provider: Claude `5h` / `7d`; ChatGPT `primary` / `weekly`; Kimi / OpenCode / OpenCode Go `5h` / `weekly`. `max` is the default and picks the higher of the two. An invalid value falls back to `max`. If the pinned window is expired or missing, the segment falls back to `max` so the bar never shows stale data. The `--detail` `← bar` marker follows the same rule, so statusbar and detail always agree.
+Allowed values per provider: Claude `5h` / `7d`; ChatGPT `primary` / `weekly`; Kimi `5h` / `weekly`; OpenCode / OpenCode Go `5h` / `weekly` / `monthly`. `max` is the default and picks the highest of the configured windows. An invalid value falls back to `max`. If the pinned window is expired or missing, the segment falls back to `max` so the bar never shows stale data. The `--detail` `← bar` marker follows the same rule, so statusbar and detail always agree.
 
 Examples:
 
@@ -206,17 +206,21 @@ provider_id = "opencode"
 db_path = ""                         # empty = ~/.local/share/opencode/opencode.db
 primary_window_hours = 5
 weekly_window_days = 7
+monthly_window_days = 30
 primary_limit_tokens = 25000000      # required when enabled
 weekly_limit_tokens = 560000000
-bar_window = "max"                  # max | 5h | weekly
+monthly_limit_tokens = 0             # 0 = percentage hidden, tokens still shown
+bar_window = "max"                  # max | 5h | weekly | monthly
 
 [opencode-go]
 enabled = false                      # OpenCode Go — letter `g`
 primary_window_hours = 5
 weekly_window_days = 7
+monthly_window_days = 30
 primary_limit_tokens = 25000000      # required when enabled
 weekly_limit_tokens = 560000000
-bar_window = "max"                  # max | 5h | weekly
+monthly_limit_tokens = 0             # 0 = percentage hidden, tokens still shown
+bar_window = "max"                  # max | 5h | weekly | monthly
 
 [cache]
 ttl_seconds = 300

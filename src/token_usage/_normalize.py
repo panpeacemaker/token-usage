@@ -16,6 +16,7 @@ KIMI_WINDOW_FIELDS: tuple[tuple[str, str], ...] = (
 OPENCODE_WINDOW_FIELDS: tuple[tuple[str, str], ...] = (
     ("primary_pct", "primary_reset_at"),
     ("weekly_pct", "weekly_reset_at"),
+    ("monthly_pct", "monthly_reset_at"),
 )
 
 

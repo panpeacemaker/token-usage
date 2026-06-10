@@ -80,6 +80,16 @@ def test_opencode_go_bar_window_weekly(tmp_path) -> None:
     assert cfg.opencode_go_bar_window == "weekly"
 
 
+def test_opencode_bar_window_monthly(tmp_path) -> None:
+    cfg = _load('[opencode]\nbar_window = "monthly"\n', tmp_path)
+    assert cfg.opencode_bar_window == "monthly"
+
+
+def test_opencode_go_bar_window_monthly(tmp_path) -> None:
+    cfg = _load('[opencode-go]\nbar_window = "monthly"\n', tmp_path)
+    assert cfg.opencode_go_bar_window == "monthly"
+
+
 def test_claude_invalid_value_falls_back_to_max(tmp_path) -> None:
     cfg = _load('[claude]\nbar_window = "bogus"\n', tmp_path)
     assert cfg.claude_bar_window == "max"

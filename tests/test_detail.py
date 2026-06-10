@@ -286,6 +286,57 @@ def test_opencode_and_go_both_rendered_in_detail():
     assert "OpenCode Go (opencode-go)" in out
 
 
+def test_opencode_monthly_line_when_limit_set():
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "primary_pct": 5.0,
+        "weekly_pct": 1.0,
+        "monthly_pct": 12.5,
+        "monthly_reset_at": 1777820040,
+        "monthly_tokens": 125000,
+        "monthly_limit_tokens": 1000000,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "monthly:" in out
+    assert "12.5%" in out
+    assert "mo tokens:" in out
+    assert "125,000" in out
+    assert "1,000,000" in out
+
+
+def test_opencode_monthly_dash_when_limit_unset():
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "primary_pct": 5.0,
+        "weekly_pct": 1.0,
+        "monthly_tokens": 125000,
+        "monthly_limit_tokens": 0,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "monthly: —" in out
+    assert "mo tokens:" in out
+    assert "125,000" in out
+
+
+def test_opencode_monthly_bar_marker():
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "primary_pct": 5.0,
+        "weekly_pct": 1.0,
+        "monthly_pct": 50.0,
+        "monthly_reset_at": 1777820040,
+        "monthly_tokens": 500000,
+        "monthly_limit_tokens": 1000000,
+    }
+    out = format_detail(None, None, None, opencode)
+    lines = out.split("\n")
+    monthly_line = [l for l in lines if "monthly:" in l][0]
+    assert "← bar" in monthly_line
+
+
 def test_expired_five_hour_window():
     s = _base_summary(
         five_hour_pct=0.0,

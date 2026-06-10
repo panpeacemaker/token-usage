@@ -30,15 +30,19 @@ class Config:
     opencode_db_path: str = ""
     opencode_primary_window_hours: int = 5
     opencode_weekly_window_days: int = 7
+    opencode_monthly_window_days: int = 30
     opencode_primary_limit_tokens: int = 0
     opencode_weekly_limit_tokens: int = 0
+    opencode_monthly_limit_tokens: int = 0
     opencode_go_enabled: bool = False
     opencode_go_provider_id: str = "opencode-go"
     opencode_go_db_path: str = ""
     opencode_go_primary_window_hours: int = 5
     opencode_go_weekly_window_days: int = 7
+    opencode_go_monthly_window_days: int = 30
     opencode_go_primary_limit_tokens: int = 0
     opencode_go_weekly_limit_tokens: int = 0
+    opencode_go_monthly_limit_tokens: int = 0
     cache_ttl_seconds: int = 300
     weekly_reset_weekday: int = 0
     weekly_reset_hour_local: int = 22
@@ -55,8 +59,8 @@ _BAR_WINDOW_ALLOWED: dict[str, frozenset[str]] = {
     "claude": frozenset({"5h", "7d"}),
     "openai": frozenset({"primary", "weekly"}),
     "kimi": frozenset({"5h", "weekly"}),
-    "opencode": frozenset({"5h", "weekly"}),
-    "opencode-go": frozenset({"5h", "weekly"}),
+    "opencode": frozenset({"5h", "weekly", "monthly"}),
+    "opencode-go": frozenset({"5h", "weekly", "monthly"}),
 }
 
 
@@ -103,15 +107,19 @@ def load() -> Config:
         opencode_db_path=str(opencode_cfg.get("db_path", "") or ""),
         opencode_primary_window_hours=int(opencode_cfg.get("primary_window_hours", 5)),
         opencode_weekly_window_days=int(opencode_cfg.get("weekly_window_days", 7)),
+        opencode_monthly_window_days=int(opencode_cfg.get("monthly_window_days", 30)),
         opencode_primary_limit_tokens=int(opencode_cfg.get("primary_limit_tokens", 0)),
         opencode_weekly_limit_tokens=int(opencode_cfg.get("weekly_limit_tokens", 0)),
+        opencode_monthly_limit_tokens=int(opencode_cfg.get("monthly_limit_tokens", 0)),
         opencode_go_enabled=bool(opencode_go_cfg.get("enabled", False)),
         opencode_go_provider_id=str(opencode_go_cfg.get("provider_id", "opencode-go")),
         opencode_go_db_path=str(opencode_go_cfg.get("db_path", "") or ""),
         opencode_go_primary_window_hours=int(opencode_go_cfg.get("primary_window_hours", 5)),
         opencode_go_weekly_window_days=int(opencode_go_cfg.get("weekly_window_days", 7)),
+        opencode_go_monthly_window_days=int(opencode_go_cfg.get("monthly_window_days", 30)),
         opencode_go_primary_limit_tokens=int(opencode_go_cfg.get("primary_limit_tokens", 0)),
         opencode_go_weekly_limit_tokens=int(opencode_go_cfg.get("weekly_limit_tokens", 0)),
+        opencode_go_monthly_limit_tokens=int(opencode_go_cfg.get("monthly_limit_tokens", 0)),
         cache_ttl_seconds=int(cache_cfg.get("ttl_seconds", 300)),
         weekly_reset_weekday=int(claude.get("weekly_reset_weekday", 0)),
         weekly_reset_hour_local=int(claude.get("weekly_reset_hour_local", 22)),

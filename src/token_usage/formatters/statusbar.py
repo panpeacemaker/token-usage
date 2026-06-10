@@ -128,6 +128,7 @@ def _format_opencode_segment(opencode: dict, letter: str = "e", bar_window: str 
     windows = [
         ("primary_pct", "primary_reset_at", "5h", None),
         ("weekly_pct", "weekly_reset_at", "weekly", None),
+        ("monthly_pct", "monthly_reset_at", "monthly", None),
     ]
     return _format_segment(opencode, letter, windows, reset_prefix="~", bar_window=bar_window)
 

@@ -410,6 +410,30 @@ def test_opencode_go_weekly_higher_drives() -> None:
     assert result == f"g4%~{WEEKLY_RESET_HHMM}"
 
 
+def test_opencode_monthly_higher_drives() -> None:
+    opencode = {
+        "available": True,
+        "primary_pct": 5.0,
+        "weekly_pct": 10.0,
+        "monthly_pct": 80.0,
+        "monthly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == f"e80%~{WEEKLY_RESET_HHMM}"
+
+
+def test_opencode_bar_window_monthly_pinned() -> None:
+    opencode = {
+        "available": True,
+        "primary_pct": 50.0,
+        "weekly_pct": 30.0,
+        "monthly_pct": 10.0,
+        "monthly_reset_at": WEEKLY_RESET_EPOCH,
+    }
+    result = format_compact({}, None, None, opencode, bar_windows={"opencode": "monthly"})
+    assert result == f"e10%~{WEEKLY_RESET_HHMM}"
+
+
 def test_both_windows_error() -> None:
     openai = {"available": False, "error": "network down"}
     result = format_compact({}, openai)
