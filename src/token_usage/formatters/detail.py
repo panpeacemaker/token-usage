@@ -6,15 +6,23 @@ from datetime import datetime, timezone
 DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━"
 
 
-def _fmt_local_time(iso_dt: datetime | str | None) -> str:
-    if iso_dt is None:
+def _fmt_local_time(value: datetime | str | int | float | None) -> str:
+    if value is None:
         return "—"
     try:
-        if isinstance(iso_dt, str):
-            iso_dt = datetime.fromisoformat(iso_dt)
-        return iso_dt.astimezone().strftime("%a %H:%M")
-    except ValueError:
-        return str(iso_dt)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            dt = _epoch_to_dt(value)
+            if dt is None:
+                return "—"
+        elif isinstance(value, str):
+            dt = datetime.fromisoformat(value)
+        else:
+            dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%a %H:%M")
+    except (ValueError, TypeError, OSError, OverflowError, AttributeError):
+        return str(value)
 
 
 def _fmt_int(n) -> str:
