@@ -78,7 +78,10 @@ def load_cookies(browser: str, domain: str):
         "chrome": getattr(browser_cookie3, "chrome", None),
         "chromium": getattr(browser_cookie3, "chromium", None),
         "brave": getattr(browser_cookie3, "brave", None),
+        "vivaldi": getattr(browser_cookie3, "vivaldi", None),
+        "edge": getattr(browser_cookie3, "edge", None),
+        "opera": getattr(browser_cookie3, "opera", None),
     }.get(b)
     if fn is None:
-        return browser_cookie3.firefox(domain_name=domain)
+        raise ValueError(f"unknown browser: {browser}")
     return fn(domain_name=domain)
