@@ -110,8 +110,9 @@ def test_is_provider_fresh_uses_per_provider_stamp(tmp_path, monkeypatch):
 def test_is_provider_fresh_falls_back_to_global_fetched_at(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
     (tmp_path / "summary.json").write_text(
-        json.dumps({"_version": cache.CACHE_VERSION, "fetched_at": time.time(), "summary": {}})
+        json.dumps({"_version": cache.CACHE_VERSION, "fetched_at": now, "_written_at": now, "summary": {}})
     )
     raw = cache.read_raw()
     assert cache.is_provider_fresh(raw, "claude", max_age_seconds=300) is True
@@ -128,13 +129,15 @@ def test_is_provider_fresh_returns_false_for_zero_max_age(tmp_path, monkeypatch)
 def test_is_provider_fresh_rejects_future_stamp(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
     (tmp_path / "summary.json").write_text(
         json.dumps(
             {
                 "_version": cache.CACHE_VERSION,
-                "fetched_at": time.time(),
+                "fetched_at": now,
+                "_written_at": now,
                 "summary": {},
-                "_provider_fetched_at": {"claude": time.time() + 48000},
+                "_provider_fetched_at": {"claude": now + 48000},
             }
         )
     )
@@ -145,13 +148,15 @@ def test_is_provider_fresh_rejects_future_stamp(tmp_path, monkeypatch):
 def test_is_provider_fresh_accepts_recent_stamp(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
     (tmp_path / "summary.json").write_text(
         json.dumps(
             {
                 "_version": cache.CACHE_VERSION,
-                "fetched_at": time.time(),
+                "fetched_at": now,
+                "_written_at": now,
                 "summary": {},
-                "_provider_fetched_at": {"claude": time.time() - 10},
+                "_provider_fetched_at": {"claude": now - 10},
             }
         )
     )
@@ -162,8 +167,9 @@ def test_is_provider_fresh_accepts_recent_stamp(tmp_path, monkeypatch):
 def test_read_rejects_future_fetched_at(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
     (tmp_path / "summary.json").write_text(
-        json.dumps({"_version": cache.CACHE_VERSION, "fetched_at": time.time() + 48000, "summary": {}})
+        json.dumps({"_version": cache.CACHE_VERSION, "fetched_at": now + 48000, "_written_at": now, "summary": {}})
     )
     assert cache.read(max_age_seconds=300) is None
 
@@ -171,13 +177,15 @@ def test_read_rejects_future_fetched_at(tmp_path, monkeypatch):
 def test_write_drops_future_provider_stamp(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
     (tmp_path / "summary.json").write_text(
         json.dumps(
             {
                 "_version": cache.CACHE_VERSION,
-                "fetched_at": time.time(),
+                "fetched_at": now,
+                "_written_at": now,
                 "summary": {},
-                "_provider_fetched_at": {"claude": time.time() + 48000, "bad": "nan"},
+                "_provider_fetched_at": {"claude": now + 48000, "bad": "nan"},
             }
         )
     )
@@ -186,3 +194,48 @@ def test_write_drops_future_provider_stamp(tmp_path, monkeypatch):
     assert "claude" not in per
     assert "bad" not in per
     assert "kimi" in per
+
+
+def test_write_includes_written_at(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    cache.write({"summary": {}}, fetched_providers={"claude"})
+    raw = cache.read_raw()
+    assert "_written_at" in raw
+    assert raw["_written_at"] <= time.time()
+
+
+def test_is_provider_fresh_rejects_stamp_newer_than_written(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "_version": cache.CACHE_VERSION,
+                "fetched_at": now,
+                "_written_at": now - 10,
+                "summary": {},
+                "_provider_fetched_at": {"claude": now},
+            }
+        )
+    )
+    raw = cache.read_raw()
+    assert cache.is_provider_fresh(raw, "claude", max_age_seconds=300) is False
+
+
+def test_read_rejects_fetched_at_newer_than_written(tmp_path, monkeypatch):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(cache, "CACHE_FILE", tmp_path / "summary.json")
+    now = time.time()
+    (tmp_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "_version": cache.CACHE_VERSION,
+                "fetched_at": now,
+                "_written_at": now - 10,
+                "summary": {},
+            }
+        )
+    )
+    assert cache.read(max_age_seconds=300) is None

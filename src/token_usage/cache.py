@@ -11,7 +11,8 @@ CACHE_FILE = CACHE_DIR / "summary.json"
 # `fetched_at`, so `--only claude` could refresh it while keeping stale
 # ChatGPT/Kimi payloads. Reject anything older.
 # v9: added `opencode_go` payload key alongside `opencode`.
-CACHE_VERSION = 9
+# v10: added `_written_at` top-level stamp to detect clock-jump tampering.
+CACHE_VERSION = 10
 
 
 def _age_within(fetched: float, max_age_seconds: int) -> bool:
@@ -54,6 +55,9 @@ def read(max_age_seconds: int) -> dict | None:
         return None
     if not _age_within(fetched_at, max_age_seconds):
         return None
+    written = data.get("_written_at")
+    if isinstance(written, (int, float)) and fetched_at > written:
+        return None
     return data
 
 
@@ -82,6 +86,9 @@ def is_provider_fresh(data: dict | None, name: str, max_age_seconds: int) -> boo
     fetched = provider_fetched_at(data, name)
     if fetched <= 0:
         return False
+    written = data.get("_written_at")
+    if isinstance(written, (int, float)) and fetched > written:
+        return False
     return _age_within(fetched, max_age_seconds)
 
 
@@ -109,11 +116,12 @@ def write(payload: dict, fetched_providers: set[str] | None = None) -> None:
         for name in fetched_providers:
             per_provider[name] = now
 
-    payload_no_meta = {k: v for k, v in payload.items() if k not in ("_version", "fetched_at", "_provider_fetched_at")}
+    payload_no_meta = {k: v for k, v in payload.items() if k not in ("_version", "fetched_at", "_provider_fetched_at", "_written_at")}
     data = {
         **payload_no_meta,
         "_version": CACHE_VERSION,
         "fetched_at": now,
+        "_written_at": now,
         "_provider_fetched_at": per_provider,
     }
     CACHE_DIR.mkdir(parents=True, exist_ok=True)

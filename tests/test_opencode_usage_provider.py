@@ -207,7 +207,7 @@ def test_skips_zero_token_rows(tmp_path: Path) -> None:
     assert result.primary_tokens == 100
 
 
-def test_pct_clamped_to_100(tmp_path: Path) -> None:
+def test_pct_not_clamped_shows_over_limit(tmp_path: Path) -> None:
     db = tmp_path / "opencode.db"
     conn = _create_db(db)
     _insert(conn, "m1", (NOW - 60) * 1000, _opencode_msg(input_t=99999))
@@ -220,7 +220,7 @@ def test_pct_clamped_to_100(tmp_path: Path) -> None:
         weekly_limit_tokens=10000,
         now=NOW,
     )
-    assert result.primary_pct == 100.0
+    assert result.primary_pct == 9999.9
 
 
 def test_dataclass_fields():

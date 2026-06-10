@@ -28,6 +28,7 @@ class OpencodeUsage:
     weekly_tokens: int = 0
     primary_limit_tokens: int = 0
     weekly_limit_tokens: int = 0
+    window_kind: str = "rolling"
 
 
 def _row_tokens(data: dict) -> int:
@@ -82,8 +83,6 @@ def _pct(used: int, limit: int) -> float:
     raw = used / limit * 100.0
     if raw < 0:
         return 0.0
-    if raw > 100:
-        return 100.0
     return round(raw, 2)
 
 
