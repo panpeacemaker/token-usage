@@ -98,3 +98,4 @@ def test_error_handling(capsys):
     err = capsys.readouterr().err
     assert "RuntimeError" in err
     assert "boom" in err
+    assert "Traceback" in err

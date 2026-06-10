@@ -92,7 +92,54 @@ def test_is_still_valid_five_hour_expired_seven_day_not() -> None:
         seven_day_pct=34.0,
         seven_day_resets_at=now + timedelta(days=3),
     )
-    assert statusline.is_still_valid(usage, now=now) is False
+    assert statusline.is_still_valid(usage, now=now) is True
+
+
+def test_window_validity_five_expired_seven_valid() -> None:
+    now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=3.0,
+        five_hour_resets_at=now - timedelta(hours=6),
+        seven_day_pct=34.0,
+        seven_day_resets_at=now + timedelta(days=3),
+    )
+    wv = statusline.window_validity(usage, now=now)
+    assert wv["overall"] is True
+    assert wv["five_valid"] is False
+    assert wv["seven_valid"] is True
+
+
+def test_window_validity_seven_expired_five_valid() -> None:
+    now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=3.0,
+        five_hour_resets_at=now + timedelta(hours=2),
+        seven_day_pct=34.0,
+        seven_day_resets_at=now - timedelta(days=1),
+    )
+    wv = statusline.window_validity(usage, now=now)
+    assert wv["overall"] is True
+    assert wv["five_valid"] is True
+    assert wv["seven_valid"] is False
+
+
+def test_window_validity_both_expired() -> None:
+    now = datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc)
+    usage = statusline.ClaudeUsage(
+        available=True,
+        five_hour_pct=3.0,
+        five_hour_resets_at=now - timedelta(hours=6),
+        seven_day_pct=34.0,
+        seven_day_resets_at=now - timedelta(days=1),
+    )
+    wv = statusline.window_validity(usage, now=now)
+    assert wv["overall"] is False
+    assert wv["five_valid"] is False
+    assert wv["seven_valid"] is False
+    assert "5h window expired" in wv["reason"]
+    assert "7d window expired" in wv["reason"]
 
 
 def test_is_still_valid_all_expired() -> None:

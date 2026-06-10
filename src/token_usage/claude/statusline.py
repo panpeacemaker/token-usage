@@ -53,21 +53,82 @@ def read_statusline_usage(path: Path | None = None) -> ClaudeUsage | None:
     )
 
 
+def window_validity(
+    usage: ClaudeUsage | None,
+    now: datetime | None = None,
+    file_mtime: float | None = None,
+    max_file_age_seconds: int = STATUSLINE_MAX_AGE_SECONDS,
+) -> dict:
+    """Return per-window and overall validity info.
+
+    A window without a ``resets_at`` timestamp is treated as valid
+    (preserving existing behaviour where missing data is not treated
+    as expired).
+    """
+    result: dict = {
+        "overall": False,
+        "reason": None,
+        "file_valid": False,
+        "five_valid": False,
+        "seven_valid": False,
+    }
+    if usage is None:
+        result["reason"] = "file missing"
+        return result
+    if not usage.available:
+        result["reason"] = f"unavailable: {usage.error}"
+        return result
+    now = now or datetime.now(timezone.utc)
+    if file_mtime is not None:
+        age = now.timestamp() - file_mtime
+        if age < 0:
+            result["reason"] = f"file mtime in future ({age:.0f}s)"
+            return result
+        if age > max_file_age_seconds:
+            result["reason"] = f"file age {age:.0f}s > {max_file_age_seconds}s max"
+            return result
+    result["file_valid"] = True
+    if usage.five_hour_resets_at is not None:
+        result["five_valid"] = usage.five_hour_resets_at > now
+    else:
+        result["five_valid"] = True
+    if usage.seven_day_resets_at is not None:
+        result["seven_valid"] = usage.seven_day_resets_at > now
+    else:
+        result["seven_valid"] = True
+    result["overall"] = result["five_valid"] or result["seven_valid"]
+    if not result["overall"]:
+        parts: list[str] = []
+        if not result["five_valid"]:
+            parts.append(
+                f"5h window expired at {usage.five_hour_resets_at.isoformat()}"
+                if usage.five_hour_resets_at
+                else "5h window expired"
+            )
+        if not result["seven_valid"]:
+            parts.append(
+                f"7d window expired at {usage.seven_day_resets_at.isoformat()}"
+                if usage.seven_day_resets_at
+                else "7d window expired"
+            )
+        result["reason"] = "; ".join(parts)
+    return result
+
+
+def check_validity(
+    usage: ClaudeUsage | None,
+    now: datetime | None = None,
+    file_mtime: float | None = None,
+    max_file_age_seconds: int = STATUSLINE_MAX_AGE_SECONDS,
+) -> tuple[bool, str | None]:
+    result = window_validity(usage, now, file_mtime, max_file_age_seconds)
+    return result["overall"], result["reason"]
+
+
 def is_still_valid(
     usage: ClaudeUsage | None,
     now: datetime | None = None,
     file_mtime: float | None = None,
     max_file_age_seconds: int = STATUSLINE_MAX_AGE_SECONDS,
 ) -> bool:
-    if usage is None or not usage.available:
-        return False
-    now = now or datetime.now(timezone.utc)
-    if file_mtime is not None:
-        age = now.timestamp() - file_mtime
-        if age < 0 or age > max_file_age_seconds:
-            return False
-    if usage.five_hour_resets_at:
-        return usage.five_hour_resets_at > now
-    if usage.seven_day_resets_at:
-        return usage.seven_day_resets_at > now
-    return False
+    return window_validity(usage, now, file_mtime, max_file_age_seconds)["overall"]

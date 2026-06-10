@@ -109,6 +109,9 @@ def test_statusline_primary_when_valid_skips_oauth() -> None:
     assert summary["_source"] == "statusline"
     assert summary["five_hour_pct"] == 42.0
     mock_oauth.assert_not_called()
+    assert summary["_source_detail"]["chosen"] == "statusline"
+    assert summary["_source_detail"]["rejected"] == []
+    assert summary["_source_detail"]["statusline_age_s"] is not None
 
 
 def test_oauth_when_statusline_missing() -> None:
@@ -125,6 +128,9 @@ def test_oauth_when_statusline_missing() -> None:
     assert summary["_source"] == "oauth"
     assert summary["five_hour_pct"] == 42.0
     assert summary["subscription_type"] == "oauth"
+    assert summary["_source_detail"]["chosen"] == "oauth"
+    assert summary["_source_detail"]["rejected"] == [{"source": "statusline", "reason": "file missing"}]
+    assert summary["_source_detail"]["statusline_age_s"] is None
 
 
 def test_oauth_when_statusline_file_stale() -> None:
@@ -141,9 +147,27 @@ def test_oauth_when_statusline_file_stale() -> None:
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "oauth"
     assert summary["five_hour_pct"] == 42.0
+    assert summary["_source_detail"]["chosen"] == "oauth"
+    rej = summary["_source_detail"]["rejected"]
+    assert len(rej) == 1
+    assert rej[0]["source"] == "statusline"
+    assert "file age" in rej[0]["reason"]
 
 
-def test_oauth_when_statusline_window_expired() -> None:
+def _partial_usage() -> ClaudeUsage:
+    now = datetime.now(timezone.utc)
+    return ClaudeUsage(
+        available=True,
+        five_hour_pct=99.0,
+        five_hour_resets_at=now - timedelta(hours=1),
+        seven_day_pct=15.0,
+        seven_day_resets_at=now + timedelta(days=3),
+        subscription_type="claude-code",
+        rate_limit_tier="claude-code",
+    )
+
+
+def test_oauth_when_statusline_fully_expired() -> None:
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     oauth_result = _future_usage("oauth")
     with (
@@ -155,6 +179,26 @@ def test_oauth_when_statusline_window_expired() -> None:
     ):
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "oauth"
+
+
+def test_statusline_chosen_when_five_expired_seven_valid() -> None:
+    cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
+    with (
+        patch.object(cache_mod, "read_raw", return_value=None),
+        patch.object(cache_mod, "write"),
+        patch.object(statusline_mod, "read_statusline_usage", return_value=_partial_usage()),
+        patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
+        patch.object(oauth_mod, "fetch_usage") as mock_oauth,
+        patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
+    ):
+        summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
+    assert summary["_source"] == "statusline"
+    assert summary["five_hour_pct"] == 0.0
+    assert summary["five_hour_resets_at"] is None
+    assert summary["seven_day_pct"] == 15.0
+    assert summary.get("_five_hour_expired") is True
+    assert summary.get("_seven_day_expired") is not True
+    mock_oauth.assert_not_called()
 
 
 def test_local_fallback_when_oauth_fails() -> None:
@@ -169,6 +213,10 @@ def test_local_fallback_when_oauth_fails() -> None:
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "local"
     assert summary["five_hour_pct"] == 10.0
+    assert summary["_source_detail"]["chosen"] == "local"
+    rej = summary["_source_detail"]["rejected"]
+    assert rej[0] == {"source": "statusline", "reason": "file missing"}
+    assert rej[1] == {"source": "oauth", "reason": "http 429"}
 
 
 def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
@@ -183,6 +231,12 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "statusline-stale"
     assert summary["five_hour_pct"] == 99.0
+    assert summary["_source_detail"]["chosen"] == "statusline-stale"
+    rej = summary["_source_detail"]["rejected"]
+    assert rej[0]["source"] == "statusline"
+    assert "window expired" in rej[0]["reason"]
+    assert rej[1] == {"source": "oauth", "reason": "http 429"}
+    assert rej[2] == {"source": "local", "reason": "no local JSONL entries"}
 
 
 def test_everything_empty_returns_unavailable() -> None:
@@ -198,6 +252,11 @@ def test_everything_empty_returns_unavailable() -> None:
     assert summary["_source"] == "none"
     assert summary["available"] is False
     assert "credentials not found" in summary["error"]
+    assert summary["_source_detail"]["chosen"] == "none"
+    rej = summary["_source_detail"]["rejected"]
+    assert rej[0] == {"source": "statusline", "reason": "file missing"}
+    assert rej[1] == {"source": "oauth", "reason": "credentials not found"}
+    assert rej[2] == {"source": "local", "reason": "no local JSONL entries"}
 
 
 def test_build_summary_writes_cache() -> None:

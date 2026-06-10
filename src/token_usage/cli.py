@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import asdict
+import time
+import traceback
+from dataclasses import asdict, replace
 
 from . import _normalize, cache
 from . import config as cfg_mod
@@ -54,9 +56,9 @@ def _fetch_opencode_go(cfg: cfg_mod.Config) -> dict | None:
 
     from .opencode.usage import DEFAULT_DB_PATH, fetch_opencode
 
-    db_path = Path(cfg.opencode_db_path) if cfg.opencode_db_path else DEFAULT_DB_PATH
+    db_path = Path(cfg.opencode_go_db_path) if cfg.opencode_go_db_path else DEFAULT_DB_PATH
     result = fetch_opencode(
-        provider_id="opencode-go",
+        provider_id=cfg.opencode_go_provider_id,
         db_path=db_path,
         primary_window_hours=cfg.opencode_go_primary_window_hours,
         weekly_window_days=cfg.opencode_go_weekly_window_days,
@@ -89,20 +91,55 @@ def _statusline_mtime() -> float | None:
 def _select_claude_source(
     statusline_usage: ClaudeUsage | None,
     local_usage: ClaudeUsage,
-) -> tuple[ClaudeUsage, str, str | None]:
+) -> tuple[ClaudeUsage, str, str | None, dict]:
+    rejected: list[dict] = []
     sl_mtime = _statusline_mtime()
-    if statusline_usage is not None and statusline.is_still_valid(statusline_usage, file_mtime=sl_mtime):
-        return statusline_usage, "statusline", None
+    statusline_age_s = time.time() - sl_mtime if sl_mtime is not None else None
+
+    if statusline_usage is not None:
+        valid, reason = statusline.check_validity(statusline_usage, file_mtime=sl_mtime)
+        if valid:
+            wv = statusline.window_validity(statusline_usage, file_mtime=sl_mtime)
+            modified = statusline_usage
+            if not wv["five_valid"]:
+                modified = replace(modified, five_hour_pct=0.0, five_hour_resets_at=None)
+            if not wv["seven_valid"]:
+                modified = replace(modified, seven_day_pct=0.0, seven_day_resets_at=None)
+            return modified, "statusline", None, {
+                "chosen": "statusline",
+                "rejected": rejected,
+                "statusline_age_s": statusline_age_s,
+                "_five_hour_expired": not wv["five_valid"],
+                "_seven_day_expired": not wv["seven_valid"],
+            }
+        rejected.append({"source": "statusline", "reason": reason})
+    else:
+        rejected.append({"source": "statusline", "reason": "file missing"})
 
     oauth_result = oauth_usage.fetch_usage()
     if oauth_result.available:
-        return oauth_result, "oauth", None
+        return oauth_result, "oauth", None, {
+            "chosen": "oauth",
+            "rejected": rejected,
+            "statusline_age_s": statusline_age_s,
+        }
+    rejected.append({"source": "oauth", "reason": oauth_result.error or "unknown error"})
 
     oauth_error = oauth_result.error
     if local_usage.available:
-        return local_usage, "local", oauth_error
+        return local_usage, "local", oauth_error, {
+            "chosen": "local",
+            "rejected": rejected,
+            "statusline_age_s": statusline_age_s,
+        }
+    rejected.append({"source": "local", "reason": local_usage.error or "unavailable"})
+
     if statusline_usage is not None:
-        return statusline_usage, "statusline-stale", oauth_error
+        return statusline_usage, "statusline-stale", oauth_error, {
+            "chosen": "statusline-stale",
+            "rejected": rejected,
+            "statusline_age_s": statusline_age_s,
+        }
     return (
         ClaudeUsage(
             available=False,
@@ -110,6 +147,11 @@ def _select_claude_source(
         ),
         "none",
         oauth_error,
+        {
+            "chosen": "none",
+            "rejected": rejected,
+            "statusline_age_s": statusline_age_s,
+        },
     )
 
 
@@ -118,10 +160,17 @@ def _assemble_summary(
     source: str,
     oauth_error: str | None,
     local_detail: dict,
+    source_detail: dict,
 ) -> dict:
     summary = asdict(claude_usage)
     summary["_source"] = source
     summary["local"] = local_detail
+    summary["_source_detail"] = source_detail
+
+    if source_detail.get("_five_hour_expired"):
+        summary["_five_hour_expired"] = True
+    if source_detail.get("_seven_day_expired"):
+        summary["_seven_day_expired"] = True
 
     if source == "statusline-stale":
         summary["_stale"] = True
@@ -185,8 +234,8 @@ def _build_summary(
             summary = existing.get("summary", {})
         else:
             local_usage, local_detail, statusline_usage = _gather_sources(cfg)
-            claude_usage, source, oauth_error = _select_claude_source(statusline_usage, local_usage)
-            summary = _assemble_summary(claude_usage, source, oauth_error, local_detail)
+            claude_usage, source, oauth_error, source_detail = _select_claude_source(statusline_usage, local_usage)
+            summary = _assemble_summary(claude_usage, source, oauth_error, local_detail, source_detail)
             fetched.add("claude")
     else:
         summary = existing.get("summary") or _empty_claude_summary()
@@ -197,8 +246,10 @@ def _build_summary(
         else:
             openai_data = _fetch_openai(cfg)
             fetched.add("chatgpt")
-    else:
+    elif "chatgpt" in selected:
         openai_data = _normalize.normalize_windows(existing.get("openai"), _normalize.OPENAI_WINDOW_FIELDS)
+    else:
+        openai_data = existing.get("openai")
 
     if "kimi" in fetchable:
         if cache.is_provider_fresh(existing, "kimi", ttl) and _cache_has_provider(existing, "kimi"):
@@ -206,8 +257,10 @@ def _build_summary(
         else:
             kimi_data = _fetch_kimi(cfg)
             fetched.add("kimi")
-    else:
+    elif "kimi" in selected:
         kimi_data = _normalize.normalize_windows(existing.get("kimi"), _normalize.KIMI_WINDOW_FIELDS)
+    else:
+        kimi_data = existing.get("kimi")
 
     if "opencode" in fetchable:
         if cache.is_provider_fresh(existing, "opencode", ttl) and _cache_has_provider(existing, "opencode"):
@@ -217,10 +270,12 @@ def _build_summary(
         else:
             opencode_data = _fetch_opencode(cfg)
             fetched.add("opencode")
-    else:
+    elif "opencode" in selected:
         opencode_data = _normalize.normalize_windows(
             existing.get("opencode"), _normalize.OPENCODE_WINDOW_FIELDS
         )
+    else:
+        opencode_data = existing.get("opencode")
 
     if "opencode-go" in fetchable:
         if cache.is_provider_fresh(existing, "opencode-go", ttl) and _cache_has_provider(existing, "opencode-go"):
@@ -230,10 +285,12 @@ def _build_summary(
         else:
             opencode_go_data = _fetch_opencode_go(cfg)
             fetched.add("opencode-go")
-    else:
+    elif "opencode-go" in selected:
         opencode_go_data = _normalize.normalize_windows(
             existing.get("opencode_go"), _normalize.OPENCODE_WINDOW_FIELDS
         )
+    else:
+        opencode_go_data = existing.get("opencode_go")
 
     cache.write(
         {
@@ -280,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         summary, openai_data, kimi_data, opencode_data, opencode_go_data = _build_summary(cfg, providers)
     except Exception as e:
         print(f"err: {type(e).__name__}: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         print("c err", end="")
         return 1
 
@@ -290,6 +348,14 @@ def main(argv: list[str] | None = None) -> int:
     opencode_for_render = opencode_data if "opencode" in sel else None
     opencode_go_for_render = opencode_go_data if "opencode-go" in sel else None
 
+    bar_windows = {
+        "claude": cfg.claude_bar_window,
+        "openai": cfg.openai_bar_window,
+        "kimi": cfg.kimi_bar_window,
+        "opencode": cfg.opencode_bar_window,
+        "opencode-go": cfg.opencode_go_bar_window,
+    }
+
     if args.detail:
         print(
             detail.format_detail(
@@ -298,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
                 kimi_for_render,
                 opencode_for_render,
                 opencode_go_for_render,
+                bar_windows=bar_windows,
             )
         )
     elif args.json:
@@ -320,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
                 opencode_for_render,
                 opencode_go_for_render,
                 bare=bare,
+                bar_windows=bar_windows,
             ),
             end="",
         )
