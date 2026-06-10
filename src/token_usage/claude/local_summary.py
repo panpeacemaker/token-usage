@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import aggregator, opencode_reader, reader
 from .limits import PlanLimits
@@ -19,13 +21,36 @@ def _merge_sources(
     return entries
 
 
+def _get_system_tz():
+    """Resolve the system local timezone, falling back to fixed offset."""
+    tz_name = os.environ.get("TZ")
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            pass
+    try:
+        localtime = Path("/etc/localtime")
+        if localtime.is_symlink():
+            target = localtime.resolve()
+            parts = target.parts
+            if "zoneinfo" in parts:
+                idx = parts.index("zoneinfo")
+                tz_name = "/".join(parts[idx + 1 :])
+                return ZoneInfo(tz_name)
+    except Exception:
+        pass
+    return datetime.now().astimezone().tzinfo
+
+
 def _next_weekly_reset(
     now: datetime,
     weekday: int,
     hour_local: int,
+    tz=None,
 ) -> datetime | None:
     try:
-        local_tz = datetime.now().astimezone().tzinfo
+        local_tz = tz or _get_system_tz()
         if local_tz is None:
             return None
         now_local = now.astimezone(local_tz)

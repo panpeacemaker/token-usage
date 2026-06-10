@@ -4,6 +4,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+from zoneinfo import ZoneInfo
+
 from token_usage.claude import local_summary
 from token_usage.claude.limits import get_limits
 
@@ -107,3 +110,33 @@ def test_fallback_five_h_reset_when_no_active_block(tmp_path: Path) -> None:
     assert usage.available is True
     assert usage.five_hour_resets_at is not None
     assert usage.five_hour_resets_at >= now + timedelta(hours=4, minutes=59)
+
+
+@pytest.mark.parametrize(
+    ("now_str", "expected_reset_utc"),
+    [
+        (
+            "2026-03-28T20:00:00+00:00",
+            "2026-03-30T20:00:00+00:00",
+        ),
+        (
+            "2026-03-29T20:00:00+00:00",
+            "2026-03-30T20:00:00+00:00",
+        ),
+        (
+            "2026-10-24T20:00:00+00:00",
+            "2026-10-26T21:00:00+00:00",
+        ),
+        (
+            "2026-10-25T20:00:00+00:00",
+            "2026-10-26T21:00:00+00:00",
+        ),
+    ],
+)
+def test_next_weekly_reset_dst_europe_prague(now_str: str, expected_reset_utc: str) -> None:
+    prague = ZoneInfo("Europe/Prague")
+    now = datetime.fromisoformat(now_str)
+    expected = datetime.fromisoformat(expected_reset_utc)
+    reset = local_summary._next_weekly_reset(now, weekday=0, hour_local=22, tz=prague)
+    assert reset is not None
+    assert reset == expected

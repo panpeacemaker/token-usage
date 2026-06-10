@@ -26,3 +26,29 @@ def test_week_totals() -> None:
     limits = get_limits("pro")
     s = aggregator.summarize(entries, limits, now=now)
     assert s["week"]["tokens"] == 2000
+
+
+def test_week_totals_exclude_cache_read() -> None:
+    from token_usage.claude.models import UsageEntry
+
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        UsageEntry(now - timedelta(days=1), "m1", "r1", "sonnet", 1000, 500, 200, 999999),
+    ]
+    limits = get_limits("pro")
+    s = aggregator.summarize(entries, limits, now=now)
+    assert s["week"]["tokens"] == 1700
+    assert s["week"]["cache_read_tokens"] == 999999
+
+
+def test_active_block_excludes_cache_read() -> None:
+    from token_usage.claude.models import UsageEntry
+
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        UsageEntry(now - timedelta(minutes=5), "m1", "r1", "sonnet", 100, 50, 20, 500000),
+    ]
+    limits = get_limits("pro")
+    s = aggregator.summarize(entries, limits, now=now)
+    assert s["active_block"]["tokens"] == 170
+    assert s["active_block"]["cache_read_tokens"] == 500000

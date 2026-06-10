@@ -36,7 +36,7 @@ def compute_blocks(entries: list[UsageEntry], block_duration: timedelta = BLOCK_
             blocks.append(current)
 
             if large_gap:
-                gap_start = last_ts + block_duration
+                gap_start = current.start + block_duration
                 gap_end = e.timestamp
                 if gap_end > gap_start:
                     blocks.append(SessionBlock(start=gap_start, end=gap_end, entries=[], is_gap=True))

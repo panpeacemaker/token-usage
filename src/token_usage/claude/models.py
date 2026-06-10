@@ -19,6 +19,10 @@ class UsageEntry:
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens + self.cache_creation_tokens + self.cache_read_tokens
 
+    @property
+    def billed_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens + self.cache_creation_tokens
+
 
 @dataclass
 class SessionBlock:
@@ -32,10 +36,14 @@ class SessionBlock:
         return sum(e.total_tokens for e in self.entries)
 
     @property
+    def billed_tokens(self) -> int:
+        return sum(e.billed_tokens for e in self.entries)
+
+    @property
     def models(self) -> dict[str, int]:
         out: dict[str, int] = {}
         for e in self.entries:
-            out[e.model] = out.get(e.model, 0) + e.total_tokens
+            out[e.model] = out.get(e.model, 0) + e.billed_tokens
         return out
 
     def contains(self, ts: datetime) -> bool:

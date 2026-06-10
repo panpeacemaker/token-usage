@@ -33,8 +33,10 @@ def summarize(entries: list[UsageEntry], limits: PlanLimits, now: datetime | Non
     active = active_block(blocks, now)
     wk = weekly_entries(entries, now)
 
-    active_tokens = active.total_tokens if active else 0
-    weekly_tokens = sum(e.total_tokens for e in wk)
+    active_tokens = active.billed_tokens if active else 0
+    active_cache_read = sum(e.cache_read_tokens for e in active.entries) if active else 0
+    weekly_tokens = sum(e.billed_tokens for e in wk)
+    weekly_cache_read = sum(e.cache_read_tokens for e in wk)
     weekly_messages = len({e.message_id for e in wk if e.message_id})
 
     def pct(used: int, limit: int) -> float:
@@ -48,6 +50,7 @@ def summarize(entries: list[UsageEntry], limits: PlanLimits, now: datetime | Non
             "start_utc": active.start.isoformat() if active else None,
             "end_utc": active.end.isoformat() if active else None,
             "tokens": active_tokens,
+            "cache_read_tokens": active_cache_read,
             "limit_tokens": limits.tokens_5h,
             "pct": pct(active_tokens, limits.tokens_5h),
             "models": active.models if active else {},
@@ -55,6 +58,7 @@ def summarize(entries: list[UsageEntry], limits: PlanLimits, now: datetime | Non
         "week": {
             "start_utc": seven_day_start_utc(now).isoformat(),
             "tokens": weekly_tokens,
+            "cache_read_tokens": weekly_cache_read,
             "limit_tokens": limits.tokens_weekly,
             "pct": pct(weekly_tokens, limits.tokens_weekly),
             "messages": weekly_messages,

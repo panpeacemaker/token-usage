@@ -42,3 +42,17 @@ def test_gap_block_inserted_when_gap_exceeds_5h() -> None:
     entries = [_entry(base), _entry(base + timedelta(hours=7))]
     blocks = compute_blocks(entries)
     assert sum(1 for b in blocks if b.is_gap) == 1
+
+
+def test_gap_uses_block_end_not_last_entry() -> None:
+    base = datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        _entry(base),
+        _entry(base + timedelta(minutes=5)),
+        _entry(base + timedelta(hours=6)),
+    ]
+    blocks = compute_blocks(entries)
+    gaps = [b for b in blocks if b.is_gap]
+    assert len(gaps) == 1
+    assert gaps[0].start == base + timedelta(hours=5)
+    assert gaps[0].end == base + timedelta(hours=6)
