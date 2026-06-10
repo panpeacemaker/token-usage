@@ -66,7 +66,7 @@ def test_build_summary_skips_chatgpt_and_kimi_when_only_claude(monkeypatch) -> N
         from token_usage.claude.models import ClaudeUsage
 
         mock_gather.return_value = (ClaudeUsage(available=True), {}, None)
-        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None)
+        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None, {})
         summary, openai, kimi, _opencode, _opencode_go = cli_mod._build_summary(cfg, providers=("claude",))
     assert summary["_source"] == "test"
     assert openai is None
@@ -155,7 +155,7 @@ def test_only_claude_does_not_restamp_chatgpt_or_kimi() -> None:
         from token_usage.claude.models import ClaudeUsage
 
         mock_gather.return_value = (ClaudeUsage(available=True), {}, None)
-        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None)
+        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None, {})
         cli_mod._build_summary(cfg, providers=("claude",))
     assert write_kwargs["fetched_providers"] == {"claude"}
     mock_openai.assert_not_called()
@@ -337,7 +337,7 @@ def test_disabled_opencode_not_fetched_even_when_selected() -> None:
         from token_usage.claude.models import ClaudeUsage
 
         mock_gather.return_value = (ClaudeUsage(available=True), {}, None)
-        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None)
+        mock_select.return_value = (ClaudeUsage(available=True), "oauth", None, {})
         _, _, _, opencode, _ = cli_mod._build_summary(cfg, providers=("claude", "opencode"))
     assert opencode is None
     mock_fetch_e.assert_not_called()
@@ -354,4 +354,95 @@ def test_enabled_opencode_fetched_when_selected() -> None:
         _, _, _, opencode, _ = cli_mod._build_summary(cfg, providers=("opencode",))
     assert opencode == {"available": True, "primary_pct": 7.0}
     mock_e.assert_called_once()
+    mock_gather.assert_not_called()
+
+
+def test_opencode_go_config_fields_defaults() -> None:
+    cfg = cfg_mod.Config()
+    assert cfg.opencode_go_provider_id == "opencode-go"
+    assert cfg.opencode_go_db_path == ""
+
+
+def test_opencode_go_uses_own_config_fields() -> None:
+    cfg = _build_cfg(
+        cache_ttl_seconds=0,
+        opencode_go_enabled=True,
+        opencode_go_provider_id="custom-go",
+        opencode_go_db_path="/custom/db.sqlite",
+    )
+    with (
+        patch.object(cache_mod, "read_raw", return_value=None),
+        patch.object(cache_mod, "write"),
+        patch.object(cli_mod, "_fetch_opencode_go") as mock_go,
+        patch.object(cli_mod, "_gather_sources") as mock_gather,
+    ):
+        cli_mod._build_summary(cfg, providers=("opencode-go",))
+    mock_go.assert_called_once()
+    call_cfg = mock_go.call_args[0][0]
+    assert call_cfg.opencode_go_provider_id == "custom-go"
+    assert call_cfg.opencode_go_db_path == "/custom/db.sqlite"
+    mock_gather.assert_not_called()
+
+
+def test_opencode_go_falls_back_to_default_db_path_when_empty() -> None:
+    cfg = _build_cfg(cache_ttl_seconds=0, opencode_go_enabled=True, opencode_go_db_path="")
+    with (
+        patch.object(cache_mod, "read_raw", return_value=None),
+        patch.object(cache_mod, "write"),
+        patch.object(cli_mod, "_fetch_opencode_go") as mock_go,
+        patch.object(cli_mod, "_gather_sources") as mock_gather,
+    ):
+        cli_mod._build_summary(cfg, providers=("opencode-go",))
+    mock_go.assert_called_once()
+    call_cfg = mock_go.call_args[0][0]
+    assert call_cfg.opencode_go_db_path == ""
+    mock_gather.assert_not_called()
+
+
+def test_load_config_opencode_go_fields(tmp_path) -> None:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[opencode-go]\nenabled = true\nprovider_id = "go-custom"\ndb_path = "/go/db.sqlite"\n'
+    )
+    with patch.object(cfg_mod, "CONFIG_FILE", config_file):
+        cfg = cfg_mod.load()
+    assert cfg.opencode_go_enabled is True
+    assert cfg.opencode_go_provider_id == "go-custom"
+    assert cfg.opencode_go_db_path == "/go/db.sqlite"
+
+
+def test_unselected_providers_not_normalized() -> None:
+    """Unselected providers must pass through untouched (no normalize, no pct roll to zero)."""
+    cfg = _build_cfg(cache_ttl_seconds=300)
+    existing = {
+        "summary": {"available": True, "_source": "oauth", "five_hour_pct": 30},
+        "openai": {
+            "available": True,
+            "primary_pct": 80.0,
+            "primary_reset_at": 1_000_000,  # far in the past
+            "weekly_pct": 50.0,
+            "weekly_reset_at": 1_000_000,
+        },
+        "kimi": {"available": True, "primary_pct": 10.0},
+        "_version": 8,
+        "fetched_at": 0,
+        "_provider_fetched_at": {"chatgpt": 0, "kimi": 0},
+    }
+    written: dict = {}
+
+    def _fake_write(payload, fetched_providers=None):
+        written.update(payload)
+
+    with (
+        patch.object(cache_mod, "read_raw", return_value=existing),
+        patch.object(cache_mod, "write", side_effect=_fake_write),
+        patch.object(cli_mod, "_fetch_kimi", return_value={"available": True, "primary_pct": 99.0}),
+        patch.object(cli_mod, "_gather_sources") as mock_gather,
+        patch.object(cli_mod, "_fetch_openai") as mock_openai,
+    ):
+        summary, openai, kimi, _opencode, _opencode_go = cli_mod._build_summary(cfg, providers=("kimi",))
+    assert openai == existing["openai"]  # untouched, reset_at still present
+    assert written["openai"] == existing["openai"]
+    assert openai["primary_pct"] == 80.0  # not rolled to zero
+    mock_openai.assert_not_called()
     mock_gather.assert_not_called()

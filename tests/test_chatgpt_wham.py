@@ -166,3 +166,46 @@ def test_chatgpt_usage_has_no_codex_fields():
     u = ChatGPTUsage(available=True)
     assert not hasattr(u, "codex_pct")
     assert not hasattr(u, "codex_reset_at")
+
+
+def test_unknown_browser_propagates_valueerror():
+    _, import_side = _mock_modules()
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(
+            wham_mod,
+            "load_cookies",
+            side_effect=ValueError("unknown browser: phantom"),
+        ),
+    ):
+        result = fetch_chatgpt("phantom")
+
+    assert not result.available
+    assert "unknown browser" in result.error
+
+
+def test_missing_primary_window_used_percent_returns_schema_error():
+    mock_requests, import_side = _mock_modules()
+    session = MagicMock()
+    mock_requests.Session.return_value = session
+
+    session_resp = MagicMock()
+    session_resp.status_code = 200
+    session_resp.json.return_value = {"accessToken": "tok"}
+
+    wham_resp = MagicMock()
+    wham_resp.status_code = 200
+    wham_resp.json.return_value = {
+        "rate_limit": {"primary_window": {"reset_at": 1700000000}},
+    }
+
+    session.get.side_effect = [session_resp, wham_resp]
+
+    with (
+        patch("importlib.import_module", side_effect=import_side),
+        patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
+    ):
+        result = fetch_chatgpt()
+
+    assert not result.available
+    assert "schema: missing primary_window used_percent" in result.error

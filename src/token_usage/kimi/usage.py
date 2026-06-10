@@ -42,10 +42,15 @@ def _reset_epoch(detail: dict) -> int | None:
     if not isinstance(detail, dict):
         return None
     raw = detail.get("resetTime")
-    if not raw:
+    if raw is None or raw == "":
         return None
     try:
-        s = raw.replace("Z", "+00:00") if isinstance(raw, str) else raw
+        if isinstance(raw, (int, float)):
+            epoch = float(raw)
+            if epoch > 1e12:
+                epoch = epoch / 1000.0
+            return int(epoch)
+        s = raw.replace("Z", "+00:00")
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
@@ -64,12 +69,12 @@ def _window_metrics(detail: dict, now_epoch: int) -> tuple[float, int | None]:
     return _used_pct(detail), reset
 
 
-def _five_hour_window(usage_obj: dict) -> dict:
+def _five_hour_window(usage_obj: dict) -> dict | None:
     for w in usage_obj.get("limits") or []:
         window = (w or {}).get("window") or {}
         if window.get("timeUnit") == "TIME_UNIT_MINUTE" and int(window.get("duration", 0) or 0) == 300:
             return (w or {}).get("detail") or {}
-    return {}
+    return None
 
 
 def fetch_kimi(browser: str = "firefox") -> KimiUsage:
@@ -84,7 +89,7 @@ def fetch_kimi(browser: str = "firefox") -> KimiUsage:
 
     try:
         cj = load_cookies(browser, COOKIE_DOMAIN)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         return KimiUsage(available=False, error=str(e))
     except Exception as e:
         return KimiUsage(available=False, error=f"cookie extraction failed: {e}")
@@ -125,6 +130,8 @@ def fetch_kimi(browser: str = "firefox") -> KimiUsage:
 
     weekly_detail = usage_obj.get("detail") or {}
     five_hour_detail = _five_hour_window(usage_obj)
+    if five_hour_detail is None:
+        return KimiUsage(available=False, error="schema: no 5h window")
     now_epoch = int(time.time())
     primary_pct, primary_reset = _window_metrics(five_hour_detail, now_epoch)
     weekly_pct, weekly_reset = _window_metrics(weekly_detail, now_epoch)

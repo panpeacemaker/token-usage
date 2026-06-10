@@ -82,7 +82,7 @@ def _http_get(url: str, token: str, timeout: int = 10) -> tuple[dict | None, str
         body = ""
         try:
             body = e.read().decode("utf-8", errors="replace")[:200]
-        except Exception:
+        except (OSError, UnicodeDecodeError, ValueError):
             pass
         return None, f"http {e.code}: {body}"
     except urllib.error.URLError as e:
@@ -116,6 +116,10 @@ def fetch_usage() -> ClaudeUsage:
 
     five = data.get("five_hour") or {}
     seven = data.get("seven_day") or {}
+    if not isinstance(five, dict) or "utilization" not in five:
+        return ClaudeUsage(available=False, error="schema: missing five_hour utilization")
+    if not isinstance(seven, dict) or "utilization" not in seven:
+        return ClaudeUsage(available=False, error="schema: missing seven_day utilization")
     seven_opus = data.get("seven_day_opus")
     seven_sonnet = data.get("seven_day_sonnet")
 

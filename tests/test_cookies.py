@@ -56,12 +56,13 @@ def test_count_cookies_handles_locked_db(tmp_path: Path) -> None:
         holder.close()
 
 
-def test_load_cookies_unknown_browser_falls_back_to_firefox(tmp_path: Path) -> None:
-    fake_jar = object()
-    fake_bc3 = type("X", (), {"firefox": staticmethod(lambda **kw: fake_jar)})()
-    with patch.object(_cookies.importlib, "import_module", return_value=fake_bc3):
-        result = _cookies.load_cookies("opera", "example.com")
-    assert result is fake_jar
+def test_load_cookies_unknown_browser_raises_valueerror() -> None:
+    fake_bc3 = type("X", (), {"firefox": staticmethod(lambda **kw: object())})()
+    with (
+        patch.object(_cookies.importlib, "import_module", return_value=fake_bc3),
+        pytest.raises(ValueError, match="unknown browser: opera"),
+    ):
+        _cookies.load_cookies("opera", "example.com")
 
 
 def test_load_cookies_zen_uses_picked_profile(tmp_path: Path) -> None:

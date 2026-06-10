@@ -26,6 +26,7 @@ def normalize_windows(
 ) -> dict | None:
     if payload is None:
         return None
+    payload = dict(payload)
     if not payload.get("available"):
         return payload
     epoch = int(now if now is not None else time.time())

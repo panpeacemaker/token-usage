@@ -102,3 +102,16 @@ def test_reset_at_exactly_now_is_treated_as_expired():
     out = normalize_windows(p, KIMI_WINDOW_FIELDS, now=NOW)
     assert out["primary_pct"] == 0.0
     assert out["primary_reset_at"] is None
+
+
+def test_normalize_does_not_mutate_input():
+    p = {
+        "available": True,
+        "primary_pct": 50.0,
+        "primary_reset_at": PAST,
+        "weekly_pct": 30.0,
+        "weekly_reset_at": FUTURE,
+    }
+    original = dict(p)
+    normalize_windows(p, KIMI_WINDOW_FIELDS, now=NOW)
+    assert p == original

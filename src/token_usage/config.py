@@ -33,6 +33,8 @@ class Config:
     opencode_primary_limit_tokens: int = 0
     opencode_weekly_limit_tokens: int = 0
     opencode_go_enabled: bool = False
+    opencode_go_provider_id: str = "opencode-go"
+    opencode_go_db_path: str = ""
     opencode_go_primary_window_hours: int = 5
     opencode_go_weekly_window_days: int = 7
     opencode_go_primary_limit_tokens: int = 0
@@ -41,6 +43,32 @@ class Config:
     weekly_reset_weekday: int = 0
     weekly_reset_hour_local: int = 22
     statusbar_providers: tuple[str, ...] = ALL_PROVIDERS
+    claude_bar_window: str = "max"
+    openai_bar_window: str = "max"
+    kimi_bar_window: str = "max"
+    opencode_bar_window: str = "max"
+    opencode_go_bar_window: str = "max"
+
+
+# Allowed bar_window values per provider (besides the universal "max" sentinel).
+_BAR_WINDOW_ALLOWED: dict[str, frozenset[str]] = {
+    "claude": frozenset({"5h", "7d"}),
+    "openai": frozenset({"primary", "weekly"}),
+    "kimi": frozenset({"5h", "weekly"}),
+    "opencode": frozenset({"5h", "weekly"}),
+    "opencode-go": frozenset({"5h", "weekly"}),
+}
+
+
+def _normalize_bar_window(provider: str, raw) -> str:
+    """Validate a bar_window value for a provider; return "max" on bad input."""
+    if not isinstance(raw, str):
+        return "max"
+    val = raw.strip().lower()
+    if val == "max":
+        return "max"
+    allowed = _BAR_WINDOW_ALLOWED.get(provider, frozenset())
+    return val if val in allowed else "max"
 
 
 def load() -> Config:
@@ -78,6 +106,8 @@ def load() -> Config:
         opencode_primary_limit_tokens=int(opencode_cfg.get("primary_limit_tokens", 0)),
         opencode_weekly_limit_tokens=int(opencode_cfg.get("weekly_limit_tokens", 0)),
         opencode_go_enabled=bool(opencode_go_cfg.get("enabled", False)),
+        opencode_go_provider_id=str(opencode_go_cfg.get("provider_id", "opencode-go")),
+        opencode_go_db_path=str(opencode_go_cfg.get("db_path", "") or ""),
         opencode_go_primary_window_hours=int(opencode_go_cfg.get("primary_window_hours", 5)),
         opencode_go_weekly_window_days=int(opencode_go_cfg.get("weekly_window_days", 7)),
         opencode_go_primary_limit_tokens=int(opencode_go_cfg.get("primary_limit_tokens", 0)),
@@ -86,6 +116,11 @@ def load() -> Config:
         weekly_reset_weekday=int(claude.get("weekly_reset_weekday", 0)),
         weekly_reset_hour_local=int(claude.get("weekly_reset_hour_local", 22)),
         statusbar_providers=providers,
+        claude_bar_window=_normalize_bar_window("claude", claude.get("bar_window", "max")),
+        openai_bar_window=_normalize_bar_window("openai", openai_cfg.get("bar_window", "max")),
+        kimi_bar_window=_normalize_bar_window("kimi", kimi_cfg.get("bar_window", "max")),
+        opencode_bar_window=_normalize_bar_window("opencode", opencode_cfg.get("bar_window", "max")),
+        opencode_go_bar_window=_normalize_bar_window("opencode-go", opencode_go_cfg.get("bar_window", "max")),
     )
 
 

@@ -6,6 +6,11 @@ plan = "max5"
 # weekday: 0=Monday ... 6=Sunday. Hour is in your system's local timezone.
 weekly_reset_weekday = 0
 weekly_reset_hour_local = 22
+# Which window drives the statusbar segment. "max" (default) picks the
+# higher of 5h/7d; pin to "5h" or "7d" to force one. Falls back to "max"
+# if the pinned window is expired or missing.
+# Allowed: "max" | "5h" | "7d"
+bar_window = "max"
 
 [claude.limits.pro]
 tokens_5h = 25000000
@@ -15,10 +20,19 @@ messages_weekly = 250
 [openai]
 enabled = true
 browser = "zen"
+# Statusbar driving window. "max" (default) picks the higher of primary/weekly.
+# "primary" matches the ChatGPT web UI. Falls back to "max" if the pinned
+# window is missing.
+# Allowed: "max" | "primary" | "weekly"
+bar_window = "max"
 
 [kimi]
 enabled = true
+# Supported: zen, firefox, chrome, chromium, brave, vivaldi, edge, opera
 browser = "zen"
+# Statusbar driving window. "max" (default) picks the higher of 5h/weekly.
+# Allowed: "max" | "5h" | "weekly"
+bar_window = "max"
 
 [opencode]
 # OpenCode (sst/opencode) Zen usage tracker. Reads ~/.local/share/opencode/opencode.db
@@ -32,15 +46,24 @@ primary_window_hours = 5
 weekly_window_days = 7
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
+# Statusbar driving window. "max" (default) picks the higher of 5h/weekly.
+# Allowed: "max" | "5h" | "weekly"
+bar_window = "max"
 
 [opencode-go]
 # OpenCode Go usage tracker. Same DB as [opencode] but filtered by
-# providerID="opencode-go". Statusbar letter: `g`. db_path inherits from [opencode].
+# providerID="opencode-go". Statusbar letter: `g`.
+# db_path empty = ~/.local/share/opencode/opencode.db (same default as [opencode]).
 enabled = false
+provider_id = "opencode-go"
+db_path = ""
 primary_window_hours = 5
 weekly_window_days = 7
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
+# Statusbar driving window. "max" (default) picks the higher of 5h/weekly.
+# Allowed: "max" | "5h" | "weekly"
+bar_window = "max"
 
 [cache]
 ttl_seconds = 300

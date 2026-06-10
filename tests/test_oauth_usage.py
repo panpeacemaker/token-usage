@@ -90,3 +90,27 @@ def test_no_tokens_anywhere(tmp_path) -> None:
         token, err = oauth_usage._read_token()
     assert token is None
     assert "no OAuth token" in err
+
+
+def test_missing_five_hour_utilization_returns_schema_error() -> None:
+    bad = {
+        "five_hour": {"resets_at": "2026-04-08T02:00:00+00:00"},
+        "seven_day": {"utilization": 15.0, "resets_at": "2026-04-13T20:00:00+00:00"},
+    }
+    with patch.object(oauth_usage, "_read_token", return_value=("fake-token", None)), \
+         patch.object(oauth_usage, "_http_get", return_value=(bad, None)):
+        result = oauth_usage.fetch_usage()
+    assert not result.available
+    assert "schema: missing five_hour utilization" in result.error
+
+
+def test_missing_seven_day_utilization_returns_schema_error() -> None:
+    bad = {
+        "five_hour": {"utilization": 72.0, "resets_at": "2026-04-08T02:00:00+00:00"},
+        "seven_day": {"resets_at": "2026-04-13T20:00:00+00:00"},
+    }
+    with patch.object(oauth_usage, "_read_token", return_value=("fake-token", None)), \
+         patch.object(oauth_usage, "_http_get", return_value=(bad, None)):
+        result = oauth_usage.fetch_usage()
+    assert not result.available
+    assert "schema: missing seven_day utilization" in result.error
