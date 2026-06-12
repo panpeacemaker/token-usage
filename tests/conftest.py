@@ -83,6 +83,20 @@ def write_jsonl(path: Path, records: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _isolate_lkg_file(tmp_path, monkeypatch):
+    """Redirect the claude last-known-good store to a temp file for ALL tests.
+
+    Without this, any test exercising _select_claude_source with a successful
+    statusline/oauth fixture writes fixture data (year-2099 resets!) into the
+    user's real ~/.cache/token-usage/claude_lkg.json, which the LKG fallback
+    tier would then serve as authoritative forever.
+    """
+    from token_usage.claude import authoritative
+
+    monkeypatch.setattr(authoritative, "LKG_FILE", tmp_path / "claude_lkg.json")
+
+
 @pytest.fixture
 def utc_now() -> datetime:
     """A stable UTC reference timestamp used by deterministic tests."""
