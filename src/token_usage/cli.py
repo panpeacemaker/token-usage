@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 import time
 import traceback
@@ -8,6 +9,7 @@ from dataclasses import asdict, replace
 
 from . import _normalize, cache
 from . import config as cfg_mod
+from .claude import authoritative as authoritative_mod
 from .claude import limits as limits_mod
 from .claude import local_summary, oauth_usage, statusline
 from .claude.models import ClaudeUsage
@@ -80,6 +82,7 @@ def _gather_sources(
         plan_limits,
         weekly_reset_weekday=cfg.weekly_reset_weekday,
         weekly_reset_hour_local=cfg.weekly_reset_hour_local,
+        cache_read_weight=cfg.claude_cache_read_weight,
     )
     statusline_usage = statusline.read_statusline_usage()
     return local_usage, local_detail, statusline_usage
@@ -90,6 +93,14 @@ def _statusline_mtime() -> float | None:
         return statusline.STATUSLINE_CACHE_FILE.stat().st_mtime
     except OSError:
         return None
+
+
+def _lkg_window_validity(usage: ClaudeUsage, now: float) -> dict[str, bool]:
+    """LKG windows are valid only when a future reset timestamp is known."""
+    return {
+        "five_valid": usage.five_hour_resets_at is not None and usage.five_hour_resets_at.timestamp() > now,
+        "seven_valid": usage.seven_day_resets_at is not None and usage.seven_day_resets_at.timestamp() > now,
+    }
 
 
 def _select_claude_source(
@@ -109,6 +120,7 @@ def _select_claude_source(
                 modified = replace(modified, five_hour_pct=0.0, five_hour_resets_at=None)
             if not wv["seven_valid"]:
                 modified = replace(modified, seven_day_pct=0.0, seven_day_resets_at=None)
+            authoritative_mod.save(modified, "statusline")
             return modified, "statusline", None, {
                 "chosen": "statusline",
                 "rejected": rejected,
@@ -122,6 +134,7 @@ def _select_claude_source(
 
     oauth_result = oauth_usage.fetch_usage()
     if oauth_result.available:
+        authoritative_mod.save(oauth_result, "oauth")
         return oauth_result, "oauth", None, {
             "chosen": "oauth",
             "rejected": rejected,
@@ -130,11 +143,48 @@ def _select_claude_source(
     rejected.append({"source": "oauth", "reason": oauth_result.error or "unknown error"})
 
     oauth_error = oauth_result.error
+
+    lkg = authoritative_mod.load()
+    if lkg is not None:
+        lkg_usage, lkg_source, lkg_saved_at = lkg
+        now = time.time()
+        wv = _lkg_window_validity(lkg_usage, now)
+        if wv["five_valid"] or wv["seven_valid"]:
+            merged = lkg_usage
+            five_estimate = not wv["five_valid"]
+            seven_estimate = not wv["seven_valid"]
+            if five_estimate and local_usage.available:
+                merged = replace(
+                    merged,
+                    five_hour_pct=local_usage.five_hour_pct,
+                    five_hour_resets_at=local_usage.five_hour_resets_at,
+                )
+            if seven_estimate and local_usage.available:
+                merged = replace(
+                    merged,
+                    seven_day_pct=local_usage.seven_day_pct,
+                    seven_day_resets_at=local_usage.seven_day_resets_at,
+                )
+            return merged, "lkg", oauth_error, {
+                "chosen": "lkg",
+                "rejected": rejected,
+                "statusline_age_s": statusline_age_s,
+                "_lkg_source": lkg_source,
+                "_lkg_saved_at": lkg_saved_at,
+                "_five_hour_estimate": five_estimate,
+                "_seven_day_estimate": seven_estimate,
+            }
+        rejected.append({"source": "lkg", "reason": "window expired"})
+    else:
+        rejected.append({"source": "lkg", "reason": "no stored authoritative data"})
+
     if local_usage.available:
         return local_usage, "local", oauth_error, {
             "chosen": "local",
             "rejected": rejected,
             "statusline_age_s": statusline_age_s,
+            "_five_hour_estimate": True,
+            "_seven_day_estimate": True,
         }
     rejected.append({"source": "local", "reason": local_usage.error or "unavailable"})
 
@@ -176,13 +226,25 @@ def _assemble_summary(
     if source_detail.get("_seven_day_expired"):
         summary["_seven_day_expired"] = True
 
+    if source_detail.get("_five_hour_estimate"):
+        summary["_five_hour_estimate"] = True
+    if source_detail.get("_seven_day_estimate"):
+        summary["_seven_day_estimate"] = True
+
     if source == "statusline-stale":
         summary["_stale"] = True
         summary["_stale_reason"] = f"oauth failed ({oauth_error}); no local data; using expired statusline"
-        try:
+        with contextlib.suppress(OSError):
             summary["_fetched_at"] = statusline.STATUSLINE_CACHE_FILE.stat().st_mtime
-        except OSError:
-            pass
+
+    if source == "lkg":
+        summary["_stale"] = True
+        age = "unknown"
+        saved_at = source_detail.get("_lkg_saved_at")
+        if saved_at is not None:
+            summary["_fetched_at"] = float(saved_at)
+            age = f"{int(time.time() - float(saved_at))}s"
+        summary["_stale_reason"] = f"oauth failed ({oauth_error}); using last-known-good authoritative data ({age} old)"
 
     return summary
 

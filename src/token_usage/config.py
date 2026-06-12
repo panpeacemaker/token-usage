@@ -48,6 +48,7 @@ class Config:
     weekly_reset_hour_local: int = 22
     statusbar_providers: tuple[str, ...] = ALL_PROVIDERS
     claude_bar_window: str = "max"
+    claude_cache_read_weight: float = 1.0
     openai_bar_window: str = "max"
     kimi_bar_window: str = "max"
     opencode_bar_window: str = "max"
@@ -125,6 +126,7 @@ def load() -> Config:
         weekly_reset_hour_local=int(claude.get("weekly_reset_hour_local", 22)),
         statusbar_providers=providers,
         claude_bar_window=_normalize_bar_window("claude", claude.get("bar_window", "max")),
+        claude_cache_read_weight=float(claude.get("cache_read_weight", 1.0)),
         openai_bar_window=_normalize_bar_window("openai", openai_cfg.get("bar_window", "max")),
         kimi_bar_window=_normalize_bar_window("kimi", kimi_cfg.get("bar_window", "max")),
         opencode_bar_window=_normalize_bar_window("opencode", opencode_cfg.get("bar_window", "max")),

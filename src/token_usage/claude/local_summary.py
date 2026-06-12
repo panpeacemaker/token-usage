@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -72,6 +73,7 @@ def compute_local(
     opencode_db: Path | None = None,
     weekly_reset_weekday: int = 0,
     weekly_reset_hour_local: int = 22,
+    cache_read_weight: float = 1.0,
 ) -> tuple[ClaudeUsage, dict]:
     now = now or datetime.now(timezone.utc)
 
@@ -83,7 +85,12 @@ def compute_local(
             {"error": str(e)},
         )
 
-    summary = aggregator.summarize(entries, plan_limits, now=now)
+    summary = aggregator.summarize(
+        entries,
+        plan_limits,
+        now=now,
+        cache_read_weight=cache_read_weight,
+    )
     detail = {
         "active_block": summary.get("active_block"),
         "week": summary.get("week"),
@@ -103,10 +110,8 @@ def compute_local(
     if active.get("present"):
         end_str = active.get("end_utc")
         if end_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 five_h_reset = datetime.fromisoformat(end_str)
-            except (ValueError, TypeError):
-                pass
     if five_h_reset is None:
         five_h_reset = now + timedelta(hours=5)
 

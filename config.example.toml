@@ -11,6 +11,9 @@ weekly_reset_hour_local = 22
 # if the pinned window is expired or missing.
 # Allowed: "max" | "5h" | "7d"
 bar_window = "max"
+# Cache-read tokens count toward Anthropic's rate limit. Weight 1.0 matches the
+# dashboard; set 0.0 to restore the old billed-tokens-only behavior.
+cache_read_weight = 1.0
 
 [claude.limits.pro]
 tokens_5h = 25000000

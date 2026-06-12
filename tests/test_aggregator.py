@@ -52,3 +52,42 @@ def test_active_block_excludes_cache_read() -> None:
     s = aggregator.summarize(entries, limits, now=now)
     assert s["active_block"]["tokens"] == 170
     assert s["active_block"]["cache_read_tokens"] == 500000
+
+
+def test_cache_read_weight_default_counts_cache_read() -> None:
+    from token_usage.claude.models import UsageEntry
+
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        UsageEntry(now - timedelta(minutes=5), "m1", "r1", "sonnet", 100, 50, 20, 500000),
+    ]
+    limits = get_limits("pro", {"pro": {"tokens_5h": 1000000}})
+    s = aggregator.summarize(entries, limits, now=now)
+    assert s["active_block"]["effective_tokens"] == 500170
+    assert s["active_block"]["pct"] == 50.0
+
+
+def test_cache_read_weight_zero_ignores_cache_read() -> None:
+    from token_usage.claude.models import UsageEntry
+
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        UsageEntry(now - timedelta(minutes=5), "m1", "r1", "sonnet", 100, 50, 20, 500000),
+    ]
+    limits = get_limits("pro", {"pro": {"tokens_5h": 1000000}})
+    s = aggregator.summarize(entries, limits, now=now, cache_read_weight=0.0)
+    assert s["active_block"]["effective_tokens"] == 170
+    assert s["active_block"]["pct"] == 0.0
+
+
+def test_cache_read_weight_fractional() -> None:
+    from token_usage.claude.models import UsageEntry
+
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        UsageEntry(now - timedelta(minutes=5), "m1", "r1", "sonnet", 100, 50, 20, 1000),
+    ]
+    limits = get_limits("pro", {"pro": {"tokens_5h": 100000}})
+    s = aggregator.summarize(entries, limits, now=now, cache_read_weight=0.5)
+    assert s["active_block"]["effective_tokens"] == 670
+    assert s["active_block"]["pct"] == 0.7

@@ -5,14 +5,24 @@ import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import pytest
+
 from token_usage.claude.models import ClaudeUsage
 
 cli_mod = importlib.import_module("token_usage.cli")
 cache_mod = importlib.import_module("token_usage.cache")
 config_mod = importlib.import_module("token_usage.config")
+authoritative_mod = importlib.import_module("token_usage.claude.authoritative")
 statusline_mod = importlib.import_module("token_usage.claude.statusline")
 local_summary_mod = importlib.import_module("token_usage.claude.local_summary")
 oauth_mod = importlib.import_module("token_usage.claude.oauth_usage")
+
+
+@pytest.fixture(autouse=True)
+def _no_authoritative_lkg(monkeypatch):
+    """Isolate tests from any real last-known-good store on disk."""
+    monkeypatch.setattr(authoritative_mod, "load", lambda: None)
+    monkeypatch.setattr(authoritative_mod, "save", lambda *args, **kwargs: None)
 
 
 def _cfg(**overrides):
@@ -121,6 +131,7 @@ def test_oauth_when_statusline_missing() -> None:
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
+        patch.object(cli_mod, "_statusline_mtime", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=oauth_result),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
@@ -225,6 +236,7 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_past_usage()),
+        patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable()),
         patch.object(local_summary_mod, "compute_local", return_value=_empty_local()),
     ):
@@ -236,7 +248,8 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
     assert rej[0]["source"] == "statusline"
     assert "window expired" in rej[0]["reason"]
     assert rej[1] == {"source": "oauth", "reason": "http 429"}
-    assert rej[2] == {"source": "local", "reason": "no local JSONL entries"}
+    assert rej[2] == {"source": "lkg", "reason": "no stored authoritative data"}
+    assert rej[3] == {"source": "local", "reason": "no local JSONL entries"}
 
 
 def test_everything_empty_returns_unavailable() -> None:
@@ -245,6 +258,7 @@ def test_everything_empty_returns_unavailable() -> None:
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
+        patch.object(cli_mod, "_statusline_mtime", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("credentials not found")),
         patch.object(local_summary_mod, "compute_local", return_value=_empty_local()),
     ):
@@ -256,7 +270,8 @@ def test_everything_empty_returns_unavailable() -> None:
     rej = summary["_source_detail"]["rejected"]
     assert rej[0] == {"source": "statusline", "reason": "file missing"}
     assert rej[1] == {"source": "oauth", "reason": "credentials not found"}
-    assert rej[2] == {"source": "local", "reason": "no local JSONL entries"}
+    assert rej[2] == {"source": "lkg", "reason": "no stored authoritative data"}
+    assert rej[3] == {"source": "local", "reason": "no local JSONL entries"}
 
 
 def test_build_summary_writes_cache() -> None:

@@ -168,16 +168,21 @@ def _claude_section(summary: dict, bar_window: str = "max") -> list[str]:
         ]
         bar = _select_bar_window(summary, windows, bar_window=bar_window)
 
+        five_estimate = summary.get("_five_hour_estimate")
+        seven_estimate = summary.get("_seven_day_estimate")
+
         if five_expired:
             lines.append("  ⏱  5-hour:  ?       expired")
         else:
             marker = _bar_marker("5h", bar)
-            lines.append(f"  ⏱  5-hour:  {five_pct:5.1f}%   resets {_fmt_local_time(five_reset)}{marker}")
+            est = " (estimate)" if five_estimate else ""
+            lines.append(f"  ⏱  5-hour:  {five_pct:5.1f}%   resets {_fmt_local_time(five_reset)}{marker}{est}")
         if seven_expired:
             lines.append("  📅 7-day:   ?       expired")
         else:
             marker = _bar_marker("7d", bar)
-            lines.append(f"  📅 7-day:   {seven_pct:5.1f}%   resets {_fmt_local_time(seven_reset)}{marker}")
+            est = " (estimate)" if seven_estimate else ""
+            lines.append(f"  📅 7-day:   {seven_pct:5.1f}%   resets {_fmt_local_time(seven_reset)}{marker}{est}")
 
         opus_pct = summary.get("seven_day_opus_pct")
         if opus_pct is not None:

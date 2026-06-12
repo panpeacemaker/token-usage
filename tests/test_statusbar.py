@@ -332,7 +332,7 @@ def test_weekly_reset_missing_no_suffix() -> None:
         "seven_day_resets_at": None,
     }
     result = format_compact(summary, None)
-    assert result == f"c92%"
+    assert result == "c92%"
 
 
 def test_claude_expired_5h_weekly_drives() -> None:
@@ -451,3 +451,41 @@ def test_stale_weekly_drives() -> None:
     }
     result = format_compact(summary, None)
     assert result == f"c85%*@{WEEKLY_RESET_HHMM}"
+
+
+def test_estimate_marker_appends_question_mark() -> None:
+    summary = {
+        "available": True,
+        "five_hour_pct": 55.0,
+        "seven_day_pct": 14.0,
+        "five_hour_resets_at": RESET,
+        "_five_hour_estimate": True,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c55%?@{RESET_HHMM}"
+
+
+def test_estimate_and_stale_markers_order_question_before_star() -> None:
+    summary = {
+        "available": True,
+        "_stale": True,
+        "five_hour_pct": 25.0,
+        "seven_day_pct": 14.0,
+        "five_hour_resets_at": RESET,
+        "_five_hour_estimate": True,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c25%?*@{RESET_HHMM}"
+
+
+def test_estimate_marker_on_weekly_window() -> None:
+    summary = {
+        "available": True,
+        "five_hour_pct": 10.0,
+        "seven_day_pct": 92.0,
+        "five_hour_resets_at": RESET,
+        "seven_day_resets_at": WEEKLY_RESET_DT,
+        "_seven_day_estimate": True,
+    }
+    result = format_compact(summary, None)
+    assert result == f"c92%?@{WEEKLY_RESET_HHMM}"

@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from token_usage import cli as cli_mod
 from token_usage import cache as cache_mod
+from token_usage import cli as cli_mod
 from token_usage import config as config_mod
+from token_usage.claude import authoritative as authoritative_mod
 from token_usage.claude import local_summary as local_summary_mod
 from token_usage.claude import oauth_usage as oauth_mod
 from token_usage.claude import statusline as statusline_mod
@@ -96,23 +97,23 @@ def _empty_local() -> tuple[ClaudeUsage, dict]:
         # statusline stale → oauth ok wins
         ("stale", "ok", "ok", "oauth", 1),
         ("stale", "ok", "empty", "oauth", 1),
-        # statusline stale → oauth fail, local ok wins
-        ("stale", "fail", "ok", "local", 2),
-        # statusline stale → oauth fail, local empty → stale statusline fallback
-        ("stale", "fail", "empty", "statusline-stale", 3),
+        # statusline stale → oauth fail, no LKG, local ok wins
+        ("stale", "fail", "ok", "local", 3),
+        # statusline stale → oauth fail, no LKG, local empty → stale statusline fallback
+        ("stale", "fail", "empty", "statusline-stale", 4),
         # statusline missing → oauth ok wins
         ("missing", "ok", "ok", "oauth", 1),
         ("missing", "ok", "empty", "oauth", 1),
-        # statusline missing → oauth fail, local ok wins
-        ("missing", "fail", "ok", "local", 2),
-        # statusline missing → oauth fail, local empty → none/error
-        ("missing", "fail", "empty", "none", 3),
+        # statusline missing → oauth fail, no LKG, local ok wins
+        ("missing", "fail", "ok", "local", 3),
+        # statusline missing → oauth fail, no LKG, local empty → none/error
+        ("missing", "fail", "empty", "none", 4),
     ],
 )
 def test_claude_source_selection_matrix(
     statusline_state, oauth_state, local_state, expected_source, expected_rejected_count
 ) -> None:
-    """Full coverage of _select_claude_source decision matrix."""
+    """Full coverage of _select_claude_source decision matrix with no LKG."""
     cfg = _cfg(cache_ttl_seconds=0)
 
     if statusline_state == "fresh":
@@ -131,6 +132,8 @@ def test_claude_source_selection_matrix(
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
+        patch.object(authoritative_mod, "save"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=sl),
         patch.object(cli_mod, "_statusline_mtime", return_value=sl_mtime),
         patch.object(oauth_mod, "fetch_usage", return_value=oauth),
@@ -167,11 +170,13 @@ def test_claude_source_selection_matrix(
 
 
 def test_stale_statusline_oauth_fail_local_ok() -> None:
-    """Specific regression: stale statusline with working local must fall back to local."""
+    """Specific regression: stale statusline with working local must fall back to local when no LKG."""
     cfg = _cfg(cache_ttl_seconds=0)
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
+        patch.object(authoritative_mod, "save"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_stale_statusline()),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
         patch.object(oauth_mod, "fetch_usage", return_value=_bad_oauth("timeout")),
@@ -185,7 +190,10 @@ def test_stale_statusline_oauth_fail_local_ok() -> None:
     assert rej[0]["source"] == "statusline"
     assert "expired" in rej[0]["reason"]
     assert rej[1] == {"source": "oauth", "reason": "timeout"}
+    assert rej[2]["source"] == "lkg"
     assert summary["five_hour_pct"] == 10.0
+    assert summary.get("_five_hour_estimate") is True
+    assert summary.get("_seven_day_estimate") is True
 
 
 # ---------------------------------------------------------------------------

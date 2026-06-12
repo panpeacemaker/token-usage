@@ -89,15 +89,17 @@ def _format_segment(
     stale: bool = False,
     reset_prefix: str = "@",
     bar_window: str = "max",
+    estimate: bool = False,
 ) -> str:
     if not data.get("available"):
         return f"{letter} err"
     best = _select_bar_window(data, windows, bar_window=bar_window)
+    estimate_marker = "?" if estimate else ""
     stale_marker = "*" if stale else ""
     if best is None:
-        return f"{letter}0%{stale_marker}"
+        return f"{letter}0%{estimate_marker}{stale_marker}"
     pct, reset, _label = best
-    return f"{letter}{pct:.0f}%{stale_marker}{_reset_suffix(reset, prefix=reset_prefix)}"
+    return f"{letter}{pct:.0f}%{estimate_marker}{stale_marker}{_reset_suffix(reset, prefix=reset_prefix)}"
 
 
 def _format_claude_segment(summary: dict, bar_window: str = "max") -> str:
@@ -105,7 +107,21 @@ def _format_claude_segment(summary: dict, bar_window: str = "max") -> str:
         ("five_hour_pct", "five_hour_resets_at", "5h", "_five_hour_expired"),
         ("seven_day_pct", "seven_day_resets_at", "7d", "_seven_day_expired"),
     ]
-    return _format_segment(summary, "c", windows, stale=summary.get("_stale", False), bar_window=bar_window)
+    best = _select_bar_window(summary, windows, bar_window=bar_window)
+    estimate = False
+    if best is not None:
+        _pct, _reset, label = best
+        estimate = (label == "5h" and summary.get("_five_hour_estimate")) or (
+            label == "7d" and summary.get("_seven_day_estimate")
+        )
+    return _format_segment(
+        summary,
+        "c",
+        windows,
+        stale=summary.get("_stale", False),
+        bar_window=bar_window,
+        estimate=estimate,
+    )
 
 
 def _format_openai_segment(openai: dict, bar_window: str = "max") -> str:
