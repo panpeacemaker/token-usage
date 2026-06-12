@@ -91,3 +91,28 @@ def test_cache_read_weight_fractional() -> None:
     s = aggregator.summarize(entries, limits, now=now, cache_read_weight=0.5)
     assert s["active_block"]["effective_tokens"] == 670
     assert s["active_block"]["pct"] == 0.7
+
+
+def test_anchored_weekly_start_excludes_older_entries() -> None:
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    anchor = now - timedelta(days=1)
+    entries = [
+        _entry(now - timedelta(minutes=5), 500),
+        _entry(now - timedelta(days=2), 4000),
+    ]
+    limits = get_limits("pro")
+    s = aggregator.summarize(entries, limits, now=now, weekly_start=anchor)
+    assert s["week"]["tokens"] == 500
+    assert s["week"]["start_utc"] == anchor.isoformat()
+
+
+def test_weekly_start_none_falls_back_to_rolling_7d() -> None:
+    now = datetime(2026, 4, 8, 10, 0, tzinfo=timezone.utc)
+    entries = [
+        _entry(now - timedelta(days=1), 500),
+        _entry(now - timedelta(days=10), 4000),
+    ]
+    limits = get_limits("pro")
+    s = aggregator.summarize(entries, limits, now=now, weekly_start=None)
+    assert s["week"]["tokens"] == 500
+    assert s["week"]["start_utc"] == (now - timedelta(days=7)).isoformat()

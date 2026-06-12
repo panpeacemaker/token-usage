@@ -22,8 +22,12 @@ def seven_day_start_utc(now: datetime | None = None) -> datetime:
     return now - timedelta(days=7)
 
 
-def weekly_entries(entries: list[UsageEntry], now: datetime | None = None) -> list[UsageEntry]:
-    start = seven_day_start_utc(now)
+def weekly_entries(
+    entries: list[UsageEntry],
+    now: datetime | None = None,
+    start: datetime | None = None,
+) -> list[UsageEntry]:
+    start = start or seven_day_start_utc(now)
     return [e for e in entries if e.timestamp >= start]
 
 
@@ -32,11 +36,12 @@ def summarize(
     limits: PlanLimits,
     now: datetime | None = None,
     cache_read_weight: float = 1.0,
+    weekly_start: datetime | None = None,
 ) -> dict:
     now = now or datetime.now(timezone.utc)
     blocks = compute_blocks(entries)
     active = active_block(blocks, now)
-    wk = weekly_entries(entries, now)
+    wk = weekly_entries(entries, now, start=weekly_start)
 
     active_tokens = active.billed_tokens if active else 0
     active_cache_read = sum(e.cache_read_tokens for e in active.entries) if active else 0
@@ -64,7 +69,7 @@ def summarize(
             "models": active.models if active else {},
         },
         "week": {
-            "start_utc": seven_day_start_utc(now).isoformat(),
+            "start_utc": (weekly_start or seven_day_start_utc(now)).isoformat(),
             "tokens": weekly_tokens,
             "cache_read_tokens": weekly_cache_read,
             "effective_tokens": weekly_effective,

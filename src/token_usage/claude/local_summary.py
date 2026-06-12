@@ -85,11 +85,15 @@ def compute_local(
             {"error": str(e)},
         )
 
+    seven_d_reset = _next_weekly_reset(now, weekly_reset_weekday, weekly_reset_hour_local)
+    weekly_start = seven_d_reset - timedelta(days=7) if seven_d_reset is not None else None
+
     summary = aggregator.summarize(
         entries,
         plan_limits,
         now=now,
         cache_read_weight=cache_read_weight,
+        weekly_start=weekly_start,
     )
     detail = {
         "active_block": summary.get("active_block"),
@@ -116,8 +120,6 @@ def compute_local(
         five_h_reset = now + timedelta(hours=5)
 
     seven_day_pct = float(week.get("pct") or 0)
-
-    seven_d_reset = _next_weekly_reset(now, weekly_reset_weekday, weekly_reset_hour_local)
 
     usage = ClaudeUsage(
         available=True,
