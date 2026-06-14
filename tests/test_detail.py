@@ -498,3 +498,187 @@ def test_claude_section_with_int_epoch_resets_does_not_crash() -> None:
     assert "Claude" in out
     assert "5-hour:" in out
     assert "7-day:" in out
+
+
+def test_opencode_idle_shows_idle_note() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "idle" in out
+    assert "5-hour:" not in out
+    assert "weekly:" not in out
+
+
+def test_opencode_idle_suppresses_misleading_zero_pct_lines() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "5-hour:  0.0%" not in out
+    assert "weekly:  0.0%" not in out
+
+
+def test_opencode_idle_monthly_still_shown() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+        "monthly_pct": 5.0,
+        "monthly_reset_at": 1777820040,
+        "monthly_tokens": 50000,
+        "monthly_limit_tokens": 1000000,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "idle" in out
+    assert "monthly:" in out
+    assert "mo tokens" in out
+    assert "5-hour:" not in out
+    assert "weekly:" not in out
+
+
+def test_opencode_go_idle_shows_idle_note() -> None:
+    opencode_go = {
+        "available": True,
+        "provider_id": "opencode-go",
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+    }
+    out = format_detail(None, None, None, None, opencode_go)
+    assert "idle" in out
+    assert "5-hour:" not in out
+
+
+def test_opencode_fixed_window_shows_fixed_label() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "window_kind": "fixed",
+        "primary_pct": 10.0,
+        "weekly_pct": 5.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "(fixed)" in out
+    assert "(rolling)" not in out
+
+
+def test_opencode_fixed_window_no_tilde_in_reset_lines() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "window_kind": "fixed",
+        "primary_pct": 10.0,
+        "weekly_pct": 5.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+    }
+    out = format_detail(None, None, None, opencode)
+    reset_lines = [ln for ln in out.split("\n") if "resets" in ln]
+    for line in reset_lines:
+        assert "~" not in line
+
+
+def test_opencode_rolling_window_keeps_rolling_label() -> None:
+    opencode = {
+        "available": True,
+        "provider_id": "opencode",
+        "window_kind": "rolling",
+        "primary_pct": 10.0,
+        "weekly_pct": 5.0,
+        "primary_reset_at": 1777233240,
+        "weekly_reset_at": 1777820040,
+    }
+    out = format_detail(None, None, None, opencode)
+    assert "(rolling)" in out
+    assert "(fixed)" not in out
+
+
+def test_local_block_effective_line_shown() -> None:
+    s = _base_summary(
+        local={
+            "active_block": {
+                "present": True,
+                "tokens": 100,
+                "cache_read_tokens": 900,
+                "cache_read_weight": 1.0,
+                "effective_tokens": 1000,
+                "models": {},
+            },
+            "week": {"messages": 5, "tokens": 500, "cache_read_tokens": 0},
+            "total_entries": 10,
+        }
+    )
+    out = format_detail(s)
+    assert "effective:" in out
+    assert "billed 100" in out
+    assert "cache-read 900" in out
+    assert "\u00d7 1.0" in out
+
+
+def test_local_block_effective_not_shown_when_no_cache_read() -> None:
+    s = _base_summary(
+        local={
+            "active_block": {
+                "present": True,
+                "tokens": 1000,
+                "cache_read_tokens": 0,
+                "cache_read_weight": 1.0,
+                "effective_tokens": 1000,
+                "models": {},
+            },
+            "week": {"messages": 5, "tokens": 500},
+            "total_entries": 10,
+        }
+    )
+    out = format_detail(s)
+    assert "effective:" not in out
+
+
+def test_local_week_effective_line_shown() -> None:
+    s = _base_summary(
+        local={
+            "active_block": {"present": False},
+            "week": {
+                "messages": 10,
+                "tokens": 1000,
+                "cache_read_tokens": 5000,
+                "cache_read_weight": 0.5,
+                "effective_tokens": 3500,
+            },
+            "total_entries": 20,
+        }
+    )
+    out = format_detail(s)
+    assert "effective:" in out
+    assert "\u00d7 0.5" in out
+
+
+def test_local_block_effective_fields_absent_no_crash() -> None:
+    s = _base_summary(
+        local={
+            "active_block": {
+                "present": True,
+                "tokens": 50000,
+                "cache_read_tokens": 100000,
+                "models": {},
+            },
+            "week": {"messages": 10, "tokens": 100000, "cache_read_tokens": 200000},
+            "total_entries": 42,
+        }
+    )
+    out = format_detail(s)
+    assert "effective:" not in out
+    assert "100,000 cache-read" in out

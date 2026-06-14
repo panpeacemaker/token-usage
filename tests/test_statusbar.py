@@ -489,3 +489,97 @@ def test_estimate_marker_on_weekly_window() -> None:
     }
     result = format_compact(summary, None)
     assert result == f"c92%?@{WEEKLY_RESET_HHMM}"
+
+
+def test_opencode_idle_renders_idle_not_percent() -> None:
+    opencode = {
+        "available": True,
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == "e idle"
+
+
+def test_opencode_go_idle_renders_idle_not_percent() -> None:
+    opencode_go = {
+        "available": True,
+        "is_idle": True,
+        "primary_pct": 0.0,
+        "weekly_pct": 0.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, None, opencode_go)
+    assert result == "g idle"
+
+
+def test_opencode_idle_false_uses_normal_path() -> None:
+    opencode = {
+        "available": True,
+        "is_idle": False,
+        "primary_pct": 50.0,
+        "weekly_pct": 10.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert "idle" not in result
+    assert "50%" in result
+
+
+def test_opencode_idle_unavailable_still_err() -> None:
+    opencode = {"available": False, "is_idle": True, "error": "db missing"}
+    result = format_compact({}, None, None, opencode)
+    assert result == "e err"
+
+
+def test_opencode_fixed_window_uses_at_prefix() -> None:
+    opencode = {
+        "available": True,
+        "window_kind": "fixed",
+        "primary_pct": 25.0,
+        "weekly_pct": 10.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == f"e25%@{RESET_HHMM}"
+
+
+def test_opencode_rolling_window_keeps_tilde() -> None:
+    opencode = {
+        "available": True,
+        "window_kind": "rolling",
+        "primary_pct": 25.0,
+        "weekly_pct": 10.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert result == f"e25%~{RESET_HHMM}"
+
+
+def test_opencode_window_kind_absent_defaults_tilde() -> None:
+    """No window_kind key → existing rolling/tilde behavior."""
+    opencode = {
+        "available": True,
+        "primary_pct": 25.0,
+        "weekly_pct": 10.0,
+        "primary_reset_at": int(RESET.timestamp()),
+    }
+    result = format_compact({}, None, None, opencode)
+    assert "~" in result
+
+
+def test_claude_local_source_shows_estimate_marker() -> None:
+    """The local JSONL source is a rough estimate, so the driving window carries
+    the `?` estimate marker — it must never look like an authoritative number."""
+    summary = {
+        "available": True,
+        "_source": "local",
+        "five_hour_pct": 55.0,
+        "seven_day_pct": 14.0,
+        "five_hour_resets_at": RESET,
+        "_five_hour_estimate": True,
+    }
+    result = format_compact(summary, None)
+    assert "?" in result

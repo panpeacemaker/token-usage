@@ -43,9 +43,6 @@ def _fetch_opencode(cfg: cfg_mod.Config) -> dict | None:
     result = fetch_opencode(
         provider_id=cfg.opencode_provider_id,
         db_path=db_path,
-        primary_window_hours=cfg.opencode_primary_window_hours,
-        weekly_window_days=cfg.opencode_weekly_window_days,
-        monthly_window_days=cfg.opencode_monthly_window_days,
         primary_limit_tokens=cfg.opencode_primary_limit_tokens,
         weekly_limit_tokens=cfg.opencode_weekly_limit_tokens,
         monthly_limit_tokens=cfg.opencode_monthly_limit_tokens,
@@ -64,9 +61,6 @@ def _fetch_opencode_go(cfg: cfg_mod.Config) -> dict | None:
     result = fetch_opencode(
         provider_id=cfg.opencode_go_provider_id,
         db_path=db_path,
-        primary_window_hours=cfg.opencode_go_primary_window_hours,
-        weekly_window_days=cfg.opencode_go_weekly_window_days,
-        monthly_window_days=cfg.opencode_go_monthly_window_days,
         primary_limit_tokens=cfg.opencode_go_primary_limit_tokens,
         weekly_limit_tokens=cfg.opencode_go_weekly_limit_tokens,
         monthly_limit_tokens=cfg.opencode_go_monthly_limit_tokens,
@@ -107,9 +101,35 @@ def _select_claude_source(
     statusline_usage: ClaudeUsage | None,
     local_usage: ClaudeUsage,
 ) -> tuple[ClaudeUsage, str, str | None, dict]:
+    """Pick the Claude source by trust, recording explicit provenance.
+
+    Precedence (authoritative real numbers always beat the local JSONL estimate,
+    because Anthropic's 5h/7d percentages are opaque and the cache-read-weighted
+    local aggregation can be several times off — see the dashboard vs local gap):
+      1. OAuth success     — official numbers (saved as last-known-good)
+      2. Fresh statusline  — file <600s old + >=1 valid window (saved as LKG)
+      3. LKG (valid)       — last real OAuth/statusline reading, windows unexpired;
+                             real but slightly old → marked stale
+      4. Local JSONL       — rough fallback ESTIMATE only when no real source is
+                             available; marked estimate so it is never mistaken for
+                             an authoritative number
+      5. Stale statusline  — expired statusline as last resort, marked stale
+      6. None              — nothing usable (available=False, error)
+    """
     rejected: list[dict] = []
     sl_mtime = _statusline_mtime()
     statusline_age_s = time.time() - sl_mtime if sl_mtime is not None else None
+
+    oauth_result = oauth_usage.fetch_usage()
+    if oauth_result.available:
+        authoritative_mod.save(oauth_result, "oauth")
+        return oauth_result, "oauth", None, {
+            "chosen": "oauth",
+            "rejected": rejected,
+            "statusline_age_s": statusline_age_s,
+        }
+    oauth_error = oauth_result.error or "unknown error"
+    rejected.append({"source": "oauth", "reason": oauth_error})
 
     if statusline_usage is not None:
         valid, reason = statusline.check_validity(statusline_usage, file_mtime=sl_mtime)
@@ -132,47 +152,19 @@ def _select_claude_source(
     else:
         rejected.append({"source": "statusline", "reason": "file missing"})
 
-    oauth_result = oauth_usage.fetch_usage()
-    if oauth_result.available:
-        authoritative_mod.save(oauth_result, "oauth")
-        return oauth_result, "oauth", None, {
-            "chosen": "oauth",
-            "rejected": rejected,
-            "statusline_age_s": statusline_age_s,
-        }
-    rejected.append({"source": "oauth", "reason": oauth_result.error or "unknown error"})
-
-    oauth_error = oauth_result.error
-
     lkg = authoritative_mod.load()
     if lkg is not None:
         lkg_usage, lkg_source, lkg_saved_at = lkg
-        now = time.time()
-        wv = _lkg_window_validity(lkg_usage, now)
+        wv = _lkg_window_validity(lkg_usage, time.time())
         if wv["five_valid"] or wv["seven_valid"]:
-            merged = lkg_usage
-            five_estimate = not wv["five_valid"]
-            seven_estimate = not wv["seven_valid"]
-            if five_estimate and local_usage.available:
-                merged = replace(
-                    merged,
-                    five_hour_pct=local_usage.five_hour_pct,
-                    five_hour_resets_at=local_usage.five_hour_resets_at,
-                )
-            if seven_estimate and local_usage.available:
-                merged = replace(
-                    merged,
-                    seven_day_pct=local_usage.seven_day_pct,
-                    seven_day_resets_at=local_usage.seven_day_resets_at,
-                )
-            return merged, "lkg", oauth_error, {
+            return lkg_usage, "lkg", oauth_error, {
                 "chosen": "lkg",
                 "rejected": rejected,
                 "statusline_age_s": statusline_age_s,
                 "_lkg_source": lkg_source,
                 "_lkg_saved_at": lkg_saved_at,
-                "_five_hour_estimate": five_estimate,
-                "_seven_day_estimate": seven_estimate,
+                "_five_hour_estimate": not wv["five_valid"],
+                "_seven_day_estimate": not wv["seven_valid"],
             }
         rejected.append({"source": "lkg", "reason": "window expired"})
     else:

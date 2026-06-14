@@ -105,22 +105,23 @@ def test_fresh_output_cache_short_circuits() -> None:
     mock_local.assert_not_called()
 
 
-def test_statusline_primary_when_valid_skips_oauth() -> None:
+def test_fresh_statusline_chosen_when_oauth_fails() -> None:
+    """OAuth is tier 1; a fresh statusline is the opportunistic override when oauth fails."""
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage("statusline")),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage") as mock_oauth,
+        patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")) as mock_oauth,
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
     assert summary["_source"] == "statusline"
     assert summary["five_hour_pct"] == 42.0
-    mock_oauth.assert_not_called()
+    mock_oauth.assert_called_once()
     assert summary["_source_detail"]["chosen"] == "statusline"
-    assert summary["_source_detail"]["rejected"] == []
+    assert summary["_source_detail"]["rejected"] == [{"source": "oauth", "reason": "http 429"}]
     assert summary["_source_detail"]["statusline_age_s"] is not None
 
 
@@ -140,29 +141,31 @@ def test_oauth_when_statusline_missing() -> None:
     assert summary["five_hour_pct"] == 42.0
     assert summary["subscription_type"] == "oauth"
     assert summary["_source_detail"]["chosen"] == "oauth"
-    assert summary["_source_detail"]["rejected"] == [{"source": "statusline", "reason": "file missing"}]
+    assert summary["_source_detail"]["rejected"] == []
     assert summary["_source_detail"]["statusline_age_s"] is None
 
 
-def test_oauth_when_statusline_file_stale() -> None:
+def test_statusline_file_stale_rejected_falls_to_local() -> None:
+    """oauth fail + stale statusline FILE + no LKG -> local estimate fallback."""
     cfg = _cfg(cache_ttl_seconds=0, openai_enabled=False)
-    oauth_result = _future_usage("oauth")
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage("statusline")),
         patch.object(cli_mod, "_statusline_mtime", return_value=0.0),
-        patch.object(oauth_mod, "fetch_usage", return_value=oauth_result),
+        patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
-    assert summary["_source"] == "oauth"
-    assert summary["five_hour_pct"] == 42.0
-    assert summary["_source_detail"]["chosen"] == "oauth"
+    assert summary["_source"] == "local"
+    assert summary["five_hour_pct"] == 10.0
+    assert summary["_source_detail"]["chosen"] == "local"
     rej = summary["_source_detail"]["rejected"]
-    assert len(rej) == 1
-    assert rej[0]["source"] == "statusline"
-    assert "file age" in rej[0]["reason"]
+    assert rej[0] == {"source": "oauth", "reason": "http 429"}
+    assert rej[1]["source"] == "statusline"
+    assert "file age" in rej[1]["reason"]
+    assert summary.get("_five_hour_estimate") is True
 
 
 def _partial_usage() -> ClaudeUsage:
@@ -199,7 +202,7 @@ def test_statusline_chosen_when_five_expired_seven_valid() -> None:
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_partial_usage()),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage") as mock_oauth,
+        patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
         summary, _o, _k, _e, _g = cli_mod._build_summary(cfg)
@@ -209,7 +212,6 @@ def test_statusline_chosen_when_five_expired_seven_valid() -> None:
     assert summary["seven_day_pct"] == 15.0
     assert summary.get("_five_hour_expired") is True
     assert summary.get("_seven_day_expired") is not True
-    mock_oauth.assert_not_called()
 
 
 def test_local_fallback_when_oauth_fails() -> None:
@@ -217,6 +219,7 @@ def test_local_fallback_when_oauth_fails() -> None:
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
@@ -226,8 +229,9 @@ def test_local_fallback_when_oauth_fails() -> None:
     assert summary["five_hour_pct"] == 10.0
     assert summary["_source_detail"]["chosen"] == "local"
     rej = summary["_source_detail"]["rejected"]
-    assert rej[0] == {"source": "statusline", "reason": "file missing"}
-    assert rej[1] == {"source": "oauth", "reason": "http 429"}
+    assert rej[0] == {"source": "oauth", "reason": "http 429"}
+    assert rej[1] == {"source": "statusline", "reason": "file missing"}
+    assert summary.get("_five_hour_estimate") is True
 
 
 def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
@@ -235,6 +239,7 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
         patch.object(statusline_mod, "read_statusline_usage", return_value=_past_usage()),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable()),
@@ -245,9 +250,9 @@ def test_stale_statusline_returned_when_oauth_fails_and_no_local() -> None:
     assert summary["five_hour_pct"] == 99.0
     assert summary["_source_detail"]["chosen"] == "statusline-stale"
     rej = summary["_source_detail"]["rejected"]
-    assert rej[0]["source"] == "statusline"
-    assert "window expired" in rej[0]["reason"]
-    assert rej[1] == {"source": "oauth", "reason": "http 429"}
+    assert rej[0] == {"source": "oauth", "reason": "http 429"}
+    assert rej[1]["source"] == "statusline"
+    assert "window expired" in rej[1]["reason"]
     assert rej[2] == {"source": "lkg", "reason": "no stored authoritative data"}
     assert rej[3] == {"source": "local", "reason": "no local JSONL entries"}
 
@@ -257,6 +262,7 @@ def test_everything_empty_returns_unavailable() -> None:
     with (
         patch.object(cache_mod, "read_raw", return_value=None),
         patch.object(cache_mod, "write"),
+        patch.object(authoritative_mod, "load", return_value=None),
         patch.object(statusline_mod, "read_statusline_usage", return_value=None),
         patch.object(cli_mod, "_statusline_mtime", return_value=None),
         patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("credentials not found")),
@@ -268,8 +274,8 @@ def test_everything_empty_returns_unavailable() -> None:
     assert "credentials not found" in summary["error"]
     assert summary["_source_detail"]["chosen"] == "none"
     rej = summary["_source_detail"]["rejected"]
-    assert rej[0] == {"source": "statusline", "reason": "file missing"}
-    assert rej[1] == {"source": "oauth", "reason": "credentials not found"}
+    assert rej[0] == {"source": "oauth", "reason": "credentials not found"}
+    assert rej[1] == {"source": "statusline", "reason": "file missing"}
     assert rej[2] == {"source": "lkg", "reason": "no stored authoritative data"}
     assert rej[3] == {"source": "local", "reason": "no local JSONL entries"}
 
@@ -281,7 +287,7 @@ def test_build_summary_writes_cache() -> None:
         patch.object(cache_mod, "write") as mock_write,
         patch.object(statusline_mod, "read_statusline_usage", return_value=_future_usage()),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage"),
+        patch.object(oauth_mod, "fetch_usage", return_value=_oauth_unavailable("http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=_good_local()),
     ):
         cli_mod._build_summary(cfg)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from ._shared import _select_bar_window
+
 
 def _coerce_dt(value) -> datetime | None:
     if value is None:
@@ -35,51 +37,6 @@ def _reset_suffix(reset, prefix: str = "@") -> str:
     hhmm = _local_hhmm(reset)
     return f"{prefix}{hhmm}" if hhmm else ""
 
-
-def _select_bar_window(
-    data: dict,
-    windows: list[tuple[str, str, str, str | None]],
-    bar_window: str = "max",
-) -> tuple[float, any, str] | None:
-    """Return (pct, reset, label) for the driving window, or None.
-
-    If ``bar_window`` names one of the labels in ``windows`` and that window
-    has a valid (non-None, coercible, non-expired) pct, it wins. Otherwise
-    fall back to the max-pct rule. ``bar_window="max"`` (the default) always
-    takes the max-rule path.
-
-    Each window tuple is ``(pct_field, reset_field, label, expired_field)``
-    where ``expired_field`` is the optional key in ``data`` that flags an
-    expired window (use ``None`` for providers that do not mark expiry).
-    """
-    if bar_window != "max":
-        for pct_field, reset_field, label, expired_field in windows:
-            if label != bar_window:
-                continue
-            if expired_field and data.get(expired_field):
-                break
-            pct = data.get(pct_field)
-            if pct is None:
-                break
-            try:
-                return (float(pct), data.get(reset_field), label)
-            except (TypeError, ValueError):
-                break
-    best = None
-    for pct_field, reset_field, label, expired_field in windows:
-        if expired_field and data.get(expired_field):
-            continue
-        pct = data.get(pct_field)
-        if pct is None:
-            continue
-        try:
-            pct_val = float(pct)
-        except (TypeError, ValueError):
-            continue
-        reset = data.get(reset_field)
-        if best is None or pct_val > best[0]:
-            best = (pct_val, reset, label)
-    return best
 
 
 def _format_segment(
@@ -141,12 +98,16 @@ def _format_kimi_segment(kimi: dict, bar_window: str = "max") -> str:
 
 
 def _format_opencode_segment(opencode: dict, letter: str = "e", bar_window: str = "max") -> str:
+    if opencode.get("available") and opencode.get("is_idle"):
+        return f"{letter} idle"
     windows = [
         ("primary_pct", "primary_reset_at", "5h", None),
         ("weekly_pct", "weekly_reset_at", "weekly", None),
         ("monthly_pct", "monthly_reset_at", "monthly", None),
     ]
-    return _format_segment(opencode, letter, windows, reset_prefix="~", bar_window=bar_window)
+    window_kind = opencode.get("window_kind", "rolling")
+    reset_prefix = "@" if window_kind == "fixed" else "~"
+    return _format_segment(opencode, letter, windows, reset_prefix=reset_prefix, bar_window=bar_window)
 
 
 def format_compact(

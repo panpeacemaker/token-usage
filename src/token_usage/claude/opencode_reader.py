@@ -67,6 +67,8 @@ def _row_to_entry(row: sqlite3.Row) -> UsageEntry | None:
     except (TypeError, ValueError, OSError, OverflowError):
         return None
 
+    kind = "tool" if data.get("finish") == "tool-calls" else "turn"
+
     return UsageEntry(
         timestamp=ts,
         message_id=str(row["id"]),
@@ -76,4 +78,5 @@ def _row_to_entry(row: sqlite3.Row) -> UsageEntry | None:
         output_tokens=output_tokens,
         cache_creation_tokens=cache_write,
         cache_read_tokens=cache_read,
+        kind=kind,
     )

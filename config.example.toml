@@ -11,8 +11,9 @@ weekly_reset_hour_local = 22
 # if the pinned window is expired or missing.
 # Allowed: "max" | "5h" | "7d"
 bar_window = "max"
-# Cache-read tokens count toward Anthropic's rate limit. Weight 1.0 matches the
-# dashboard; set 0.0 to restore the old billed-tokens-only behavior.
+# Local JSONL effective tokens = billed input/output/cache-write tokens plus
+# cache_read_weight × cache-read tokens. --detail prints the same breakdown.
+# Default 1.0 counts cache reads at full weight.
 cache_read_weight = 1.0
 
 [claude.limits.pro]
@@ -39,35 +40,35 @@ bar_window = "max"
 
 [opencode]
 # OpenCode (sst/opencode) Zen usage tracker. Reads ~/.local/share/opencode/opencode.db
-# and aggregates assistant tokens for providerID="opencode" into a 5h + 7d + 30d
-# rolling window. There is no public OpenCode quota API, so percentage is computed
-# against the limit_tokens you configure here. Statusbar letter: `e`.
+# and aggregates assistant tokens for providerID="opencode" into fixed calendar
+# windows: 5h UTC-epoch blocks, Monday 00:00 UTC weeks, and month starts at
+# the 1st 00:00 UTC. There is no public OpenCode quota API, so percentage is
+# computed against the limit_tokens you configure here. Statusbar letter: `e`.
+# Zero usage in both 5h and weekly windows renders as `e idle`, distinct from
+# an active 0%. Monthly tokens are still shown when present.
 enabled = false
 provider_id = "opencode"
 db_path = ""                    # empty = ~/.local/share/opencode/opencode.db
-primary_window_hours = 5
-weekly_window_days = 7
-monthly_window_days = 30
+# Window sizes are fixed by the calendar (5h block / week / month) and are not
+# configurable. Only the token limits below are tunable.
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
-monthly_limit_tokens = 0        # 0 = percentage hidden, tokens still shown
+monthly_limit_tokens = 0        # 0 = monthly percentage hidden, tokens still shown
 # Statusbar driving window. "max" (default) picks the highest of 5h/weekly/monthly.
 # Allowed: "max" | "5h" | "weekly" | "monthly"
 bar_window = "max"
 
 [opencode-go]
-# OpenCode Go usage tracker. Same DB as [opencode] but filtered by
-# providerID="opencode-go". Statusbar letter: `g`.
+# OpenCode Go usage tracker. Same fixed calendar windows and idle rule as
+# [opencode], but filtered by providerID="opencode-go". Statusbar letter: `g`.
 # db_path empty = ~/.local/share/opencode/opencode.db (same default as [opencode]).
 enabled = false
 provider_id = "opencode-go"
 db_path = ""
-primary_window_hours = 5
-weekly_window_days = 7
-monthly_window_days = 30
+# Window sizes are fixed by the calendar (same rule as [opencode]).
 primary_limit_tokens = 25000000
 weekly_limit_tokens = 560000000
-monthly_limit_tokens = 0        # 0 = percentage hidden, tokens still shown
+monthly_limit_tokens = 0        # 0 = monthly percentage hidden, tokens still shown
 # Statusbar driving window. "max" (default) picks the highest of 5h/weekly/monthly.
 # Allowed: "max" | "5h" | "weekly" | "monthly"
 bar_window = "max"
@@ -78,5 +79,4 @@ ttl_seconds = 300
 [statusbar]
 # Default set of providers shown in --statusbar / --detail / --json
 # when --only is not passed. CLI flag overrides this.
-# Add "opencode" to include OpenCode (requires [opencode] enabled = true).
 providers = ["claude", "chatgpt", "kimi"]

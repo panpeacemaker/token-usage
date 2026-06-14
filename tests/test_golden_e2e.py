@@ -268,7 +268,7 @@ def test_claude_statusline_golden_statusbar(capsys) -> None:
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=sl_result),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage"),
+        patch.object(oauth_mod, "fetch_usage", return_value=ClaudeUsage(available=False, error="http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=(ClaudeUsage(available=False, error="none"), {})),
     ):
         rc = cli_mod.main(["--statusbar", "--only", "claude"])
@@ -298,7 +298,7 @@ def test_claude_statusline_golden_detail(capsys) -> None:
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=sl_result),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage"),
+        patch.object(oauth_mod, "fetch_usage", return_value=ClaudeUsage(available=False, error="http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=(ClaudeUsage(available=False, error="none"), {})),
     ):
         rc = cli_mod.main(["--detail", "--only", "claude"])
@@ -465,9 +465,9 @@ def test_opencode_golden_statusbar(capsys, tmp_path: Path, monkeypatch) -> None:
         rc = cli_mod.main(["--statusbar", "--only", "opencode"])
     assert rc == 0
     out = capsys.readouterr().out
-    # primary=50%, weekly=5% → primary drives
-    primary_reset = NOW + 5 * 3600 - 100  # oldest + window
-    expected = f"e50%~{_local_hhmm(primary_reset)}"
+    # primary=50%, weekly=5% → primary drives; window_kind="fixed" → @ prefix
+    primary_reset = (NOW // (5 * 3600)) * (5 * 3600) + 5 * 3600  # fixed 5h block boundary
+    expected = f"e50%@{_local_hhmm(primary_reset)}"
     assert out == expected
 
 
@@ -499,7 +499,7 @@ def test_opencode_golden_detail(capsys, tmp_path: Path, monkeypatch) -> None:
     assert "OpenCode" in out
     assert "50.0%" in out
     assert "5.0%" in out
-    assert "(rolling)" in out
+    assert "(fixed)" in out
     assert "← bar" in out
     assert "500 / 1,000" in out
 
@@ -534,8 +534,8 @@ def test_opencode_go_golden_statusbar(capsys, tmp_path: Path, monkeypatch) -> No
         rc = cli_mod.main(["--statusbar", "--only", "opencode-go"])
     assert rc == 0
     out = capsys.readouterr().out
-    primary_reset = NOW + 5 * 3600 - 100
-    expected = f"g70%~{_local_hhmm(primary_reset)}"
+    primary_reset = (NOW // (5 * 3600)) * (5 * 3600) + 5 * 3600  # fixed 5h block boundary
+    expected = f"g70%@{_local_hhmm(primary_reset)}"
     assert out == expected
 
 
@@ -566,7 +566,7 @@ def test_opencode_go_golden_detail(capsys, tmp_path: Path, monkeypatch) -> None:
     out = capsys.readouterr().out
     assert "OpenCode Go" in out
     assert "70.0%" in out
-    assert "(rolling)" in out
+    assert "(fixed)" in out
     assert "← bar" in out
     assert "700 / 1,000" in out
 
@@ -640,7 +640,7 @@ def test_combined_claude_chatgpt_kimi_statusbar(capsys) -> None:
         patch.object(cache_mod, "write"),
         patch.object(statusline_mod, "read_statusline_usage", return_value=claude_result),
         patch.object(cli_mod, "_statusline_mtime", return_value=time.time()),
-        patch.object(oauth_mod, "fetch_usage"),
+        patch.object(oauth_mod, "fetch_usage", return_value=ClaudeUsage(available=False, error="http 429")),
         patch.object(local_summary_mod, "compute_local", return_value=(ClaudeUsage(available=False, error="none"), {})),
         patch.object(wham_mod, "load_cookies", return_value=MagicMock()),
         patch.object(kimi_mod, "load_cookies", return_value=_kimi_auth_jar()),

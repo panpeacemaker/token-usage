@@ -12,7 +12,10 @@ CACHE_FILE = CACHE_DIR / "summary.json"
 # ChatGPT/Kimi payloads. Reject anything older.
 # v9: added `opencode_go` payload key alongside `opencode`.
 # v10: added `_written_at` top-level stamp to detect clock-jump tampering.
-CACHE_VERSION = 10
+# v11: opencode fixed-calendar windows (window_kind="fixed", is_idle), Claude
+# real-turn message count, and effective_tokens/cache_read_weight. Old v10
+# payloads carry rolling windows / phantom message pct, so reject them.
+CACHE_VERSION = 11
 
 
 def _age_within(fetched: float, max_age_seconds: int) -> bool:

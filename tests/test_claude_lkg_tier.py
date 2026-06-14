@@ -42,6 +42,10 @@ def _good_local(five_pct: float = 10.0, seven_pct: float = 5.0) -> tuple[ClaudeU
     )
 
 
+def _empty_local() -> tuple[ClaudeUsage, dict]:
+    return ClaudeUsage(available=False, error="no local JSONL entries"), {"total_entries": 0}
+
+
 def _lkg_usage(five_pct: float = 25.0, seven_pct: float = 10.0) -> ClaudeUsage:
     now = datetime.now(timezone.utc)
     return ClaudeUsage(
@@ -77,7 +81,10 @@ def _run(cfg, *, statusline=None, oauth=None, local=None, lkg=None):
         return cli_mod._build_summary(cfg)
 
 
-def test_lkg_valid_used_when_statusline_stale_and_oauth_fails() -> None:
+def test_lkg_valid_preferred_over_local_estimate() -> None:
+    """LKG (real, slightly stale) outranks the local JSONL estimate: a recent real
+    OAuth/statusline reading is more trustworthy than the cache-read-weighted local
+    approximation (which can be several times off the dashboard)."""
     cfg = _cfg(cache_ttl_seconds=0)
     lkg = (_lkg_usage(25.0, 10.0), "oauth", time.time())
     stale = ClaudeUsage(
@@ -89,7 +96,7 @@ def test_lkg_valid_used_when_statusline_stale_and_oauth_fails() -> None:
         subscription_type="claude-code",
         rate_limit_tier="claude-code",
     )
-    summary, _o, _k, _e, _g = _run(cfg, statusline=stale, lkg=lkg)
+    summary, _o, _k, _e, _g = _run(cfg, statusline=stale, lkg=lkg, local=_good_local())
 
     assert summary["_source"] == "lkg"
     assert summary["_source_detail"]["chosen"] == "lkg"
@@ -98,9 +105,14 @@ def test_lkg_valid_used_when_statusline_stale_and_oauth_fails() -> None:
     assert summary.get("_stale") is True
     assert "oauth failed" in summary.get("_stale_reason", "")
     assert summary.get("_fetched_at") == lkg[2]
+    rej = summary["_source_detail"]["rejected"]
+    assert rej[0]["source"] == "oauth"
+    # LKG won before local was reached → local is not in the rejected chain.
+    assert all(r["source"] != "local" for r in rej)
 
 
-def test_lkg_partial_five_expired_uses_local_estimate_for_five() -> None:
+def test_lkg_partial_five_expired_marks_five_as_estimate() -> None:
+    """When local is unavailable, an expired LKG window is shown but marked estimate."""
     cfg = _cfg(cache_ttl_seconds=0)
     now = datetime.now(timezone.utc)
     lkg_usage = ClaudeUsage(
@@ -113,16 +125,19 @@ def test_lkg_partial_five_expired_uses_local_estimate_for_five() -> None:
         rate_limit_tier="claude-code",
     )
     lkg = (lkg_usage, "oauth", time.time())
-    summary, _o, _k, _e, _g = _run(cfg, statusline=None, lkg=lkg, local=_good_local(five_pct=12.0))
+    summary, _o, _k, _e, _g = _run(cfg, statusline=None, lkg=lkg, local=_empty_local())
 
     assert summary["_source"] == "lkg"
-    assert summary["five_hour_pct"] == 12.0
+    assert summary["five_hour_pct"] == 25.0
     assert summary["seven_day_pct"] == 10.0
     assert summary.get("_five_hour_estimate") is True
     assert summary.get("_seven_day_estimate") is not True
 
 
-def test_lkg_both_expired_falls_through_to_local() -> None:
+def test_local_estimate_used_when_lkg_expired() -> None:
+    """When LKG windows are both expired (no fresh real source available), the
+    local JSONL aggregation is the last-resort fallback — and is flagged as an
+    ESTIMATE so the bar never presents it as an authoritative number."""
     cfg = _cfg(cache_ttl_seconds=0)
     now = datetime.now(timezone.utc)
     lkg_usage = ClaudeUsage(
@@ -135,9 +150,33 @@ def test_lkg_both_expired_falls_through_to_local() -> None:
         rate_limit_tier="claude-code",
     )
     lkg = (lkg_usage, "oauth", time.time())
-    summary, _o, _k, _e, _g = _run(cfg, statusline=None, lkg=lkg)
+    summary, _o, _k, _e, _g = _run(cfg, statusline=None, lkg=lkg, local=_good_local())
 
     assert summary["_source"] == "local"
     assert summary["_source_detail"]["chosen"] == "local"
     assert summary.get("_five_hour_estimate") is True
     assert summary.get("_seven_day_estimate") is True
+    assert summary.get("_stale") is not True
+    # LKG is evaluated and rejected (windows expired) BEFORE local is chosen.
+    assert any(r["source"] == "lkg" for r in summary["_source_detail"]["rejected"])
+
+
+def test_lkg_both_expired_and_no_local_yields_none() -> None:
+    """Local unavailable + LKG both windows expired + no statusline -> none."""
+    cfg = _cfg(cache_ttl_seconds=0)
+    now = datetime.now(timezone.utc)
+    lkg_usage = ClaudeUsage(
+        available=True,
+        five_hour_pct=25.0,
+        five_hour_resets_at=now - timedelta(hours=1),
+        seven_day_pct=10.0,
+        seven_day_resets_at=now - timedelta(days=1),
+        subscription_type="claude-code",
+        rate_limit_tier="claude-code",
+    )
+    lkg = (lkg_usage, "oauth", time.time())
+    summary, _o, _k, _e, _g = _run(cfg, statusline=None, lkg=lkg, local=_empty_local())
+
+    assert summary["_source"] == "none"
+    rej = summary["_source_detail"]["rejected"]
+    assert any(r["source"] == "lkg" and "window expired" in r["reason"] for r in rej)

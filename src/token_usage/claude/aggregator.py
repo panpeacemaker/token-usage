@@ -49,7 +49,7 @@ def summarize(
     weekly_tokens = sum(e.billed_tokens for e in wk)
     weekly_cache_read = sum(e.cache_read_tokens for e in wk)
     weekly_effective = int(weekly_tokens + cache_read_weight * weekly_cache_read)
-    weekly_messages = len({e.message_id for e in wk if e.message_id})
+    weekly_messages = len({e.message_id for e in wk if e.message_id and e.kind == "turn"})
 
     def pct(used: int, limit: int) -> float:
         return round(used / limit * 100, 1) if limit > 0 else 0.0
@@ -63,6 +63,7 @@ def summarize(
             "end_utc": active.end.isoformat() if active else None,
             "tokens": active_tokens,
             "cache_read_tokens": active_cache_read,
+            "cache_read_weight": cache_read_weight,
             "effective_tokens": active_effective,
             "limit_tokens": limits.tokens_5h,
             "pct": pct(active_effective, limits.tokens_5h),
@@ -72,6 +73,7 @@ def summarize(
             "start_utc": (weekly_start or seven_day_start_utc(now)).isoformat(),
             "tokens": weekly_tokens,
             "cache_read_tokens": weekly_cache_read,
+            "cache_read_weight": cache_read_weight,
             "effective_tokens": weekly_effective,
             "limit_tokens": limits.tokens_weekly,
             "pct": pct(weekly_effective, limits.tokens_weekly),

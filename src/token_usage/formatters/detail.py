@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import time as _time
 from datetime import datetime, timezone
+from typing import Any
+
+from ._shared import _select_bar_window
 
 DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -74,49 +77,8 @@ def _fmt_source_detail(source_detail: dict) -> str:
     return f"source: {chosen}"
 
 
-def _select_bar_window(
-    data: dict,
-    windows: list[tuple[str, str, str, str | None]],
-    bar_window: str = "max",
-) -> tuple[float, any, str] | None:
-    """Return (pct, reset, label) for the driving window, or None.
 
-    Mirrors the statusbar helper: ``bar_window="max"`` (default) takes the
-    max-pct rule; any other valid label picks that specific window when it
-    has a usable pct, otherwise falls back to max. See statusbar.py for the
-    full contract.
-    """
-    if bar_window != "max":
-        for pct_field, reset_field, label, expired_field in windows:
-            if label != bar_window:
-                continue
-            if expired_field and data.get(expired_field):
-                break
-            pct = data.get(pct_field)
-            if pct is None:
-                break
-            try:
-                return (float(pct), data.get(reset_field), label)
-            except (TypeError, ValueError):
-                break
-    best = None
-    for pct_field, reset_field, label, expired_field in windows:
-        if expired_field and data.get(expired_field):
-            continue
-        pct = data.get(pct_field)
-        if pct is None:
-            continue
-        try:
-            pct_val = float(pct)
-        except (TypeError, ValueError):
-            continue
-        reset = data.get(reset_field)
-        if best is None or pct_val > best[0]:
-            best = (pct_val, reset, label)
-    return best
-
-
-def _bar_marker(label: str, bar_window: tuple[float, any, str] | None) -> str:
+def _bar_marker(label: str, bar_window: tuple[float, Any, str] | None) -> str:
     if bar_window is None:
         return ""
     _pct, _reset, bar_label = bar_window
@@ -200,9 +162,17 @@ def _claude_section(summary: dict, bar_window: str = "max") -> list[str]:
         if ab.get("present"):
             tokens = ab.get("tokens", 0)
             cache_read = ab.get("cache_read_tokens", 0)
+            effective = ab.get("effective_tokens")
+            crw = ab.get("cache_read_weight")
             models = ab.get("models") or {}
             cache_part = f" (+{_fmt_int(cache_read)} cache-read)" if cache_read else ""
             lines.append(f"  current block: {_fmt_int(tokens)} tokens{cache_part}")
+            if effective is not None and crw is not None and cache_read:
+                w = f"{crw:.1f}"
+                lines.append(
+                    f"     effective: {_fmt_int(effective)}"
+                    f" (billed {_fmt_int(tokens)} + cache-read {_fmt_int(cache_read)} \u00d7 {w})"
+                )
             if models:
                 merged: dict[str, int] = {}
                 for m, t in models.items():
@@ -214,9 +184,17 @@ def _claude_section(summary: dict, bar_window: str = "max") -> list[str]:
         wk_msgs = wk.get("messages", 0)
         wk_toks = wk.get("tokens", 0)
         wk_cache = wk.get("cache_read_tokens", 0)
+        wk_eff = wk.get("effective_tokens")
+        wk_crw = wk.get("cache_read_weight")
         if wk_toks or wk_msgs or wk_cache:
             cache_part = f" (+{_fmt_int(wk_cache)} cache-read)" if wk_cache else ""
             lines.append(f"  this week: {wk_msgs} msgs / {_fmt_int(wk_toks)} tokens{cache_part}")
+            if wk_eff is not None and wk_crw is not None and wk_cache:
+                w = f"{wk_crw:.1f}"
+                lines.append(
+                    f"     effective: {_fmt_int(wk_eff)}"
+                    f" (billed {_fmt_int(wk_toks)} + cache-read {_fmt_int(wk_cache)} \u00d7 {w})"
+                )
 
     return lines
 
@@ -264,41 +242,61 @@ def _kimi_section(kimi: dict, bar_window: str = "max") -> list[str]:
 def _opencode_section(opencode: dict, label: str = "OpenCode", bar_window: str = "max") -> list[str]:
     pid = opencode.get("provider_id", "opencode")
     lines: list[str] = [f"🟠 {label} ({pid})", DIVIDER]
-    if opencode.get("available"):
-        primary_reset = _fmt_local_time(_epoch_to_dt(opencode.get("primary_reset_at")))
-        weekly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("weekly_reset_at")))
-        monthly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("monthly_reset_at")))
-        primary_label = f"~{primary_reset} (rolling)" if primary_reset != "—" else "—"
-        weekly_label = f"~{weekly_reset} (rolling)" if weekly_reset != "—" else "—"
-        monthly_label = f"~{monthly_reset} (rolling)" if monthly_reset != "—" else "—"
-        windows = [
-            ("primary_pct", "primary_reset_at", "5h", None),
-            ("weekly_pct", "weekly_reset_at", "weekly", None),
-            ("monthly_pct", "monthly_reset_at", "monthly", None),
-        ]
-        bar = _select_bar_window(opencode, windows, bar_window=bar_window)
+    if not opencode.get("available"):
+        lines.append(f"  ⚠ unavailable: {opencode.get('error', 'not configured')}")
+        return lines
+
+    window_kind = opencode.get("window_kind", "rolling")
+    is_idle = opencode.get("is_idle", False)
+
+    primary_reset = _fmt_local_time(_epoch_to_dt(opencode.get("primary_reset_at")))
+    weekly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("weekly_reset_at")))
+    monthly_reset = _fmt_local_time(_epoch_to_dt(opencode.get("monthly_reset_at")))
+
+    def _wlabel(reset_str: str) -> str:
+        if reset_str == "—":
+            return "—"
+        if window_kind == "fixed":
+            return f"{reset_str} (fixed)"
+        return f"~{reset_str} (rolling)"
+
+    primary_label = _wlabel(primary_reset)
+    weekly_label = _wlabel(weekly_reset)
+    monthly_label = _wlabel(monthly_reset)
+
+    windows = [
+        ("primary_pct", "primary_reset_at", "5h", None),
+        ("weekly_pct", "weekly_reset_at", "weekly", None),
+        ("monthly_pct", "monthly_reset_at", "monthly", None),
+    ]
+    bar = _select_bar_window(opencode, windows, bar_window=bar_window)
+
+    if is_idle:
+        lines.append("  ⏼ idle — no activity in 5h/weekly windows")
+    else:
         marker = _bar_marker("5h", bar)
         lines.append(f"  5-hour:  {opencode.get('primary_pct', 0):5.1f}%   resets {primary_label}{marker}")
         marker = _bar_marker("weekly", bar)
         lines.append(f"  weekly:  {opencode.get('weekly_pct', 0):5.1f}%   resets {weekly_label}{marker}")
-        mlim = opencode.get("monthly_limit_tokens", 0)
-        if mlim:
-            marker = _bar_marker("monthly", bar)
-            lines.append(f"  monthly: {opencode.get('monthly_pct', 0):5.1f}%   resets {monthly_label}{marker}")
-        else:
-            lines.append(f"  monthly: —       resets {monthly_label}")
-        ptoks = opencode.get("primary_tokens", 0)
-        plim = opencode.get("primary_limit_tokens", 0)
-        wtoks = opencode.get("weekly_tokens", 0)
-        wlim = opencode.get("weekly_limit_tokens", 0)
-        mtoks = opencode.get("monthly_tokens", 0)
+
+    mlim = opencode.get("monthly_limit_tokens", 0)
+    if mlim:
+        marker = "" if is_idle else _bar_marker("monthly", bar)
+        lines.append(f"  monthly: {opencode.get('monthly_pct', 0):5.1f}%   resets {monthly_label}{marker}")
+    else:
+        lines.append(f"  monthly: —       resets {monthly_label}")
+
+    ptoks = opencode.get("primary_tokens", 0)
+    plim = opencode.get("primary_limit_tokens", 0)
+    wtoks = opencode.get("weekly_tokens", 0)
+    wlim = opencode.get("weekly_limit_tokens", 0)
+    mtoks = opencode.get("monthly_tokens", 0)
+    if not is_idle:
         if plim:
             lines.append(f"     5h tokens:   {_fmt_int(ptoks)} / {_fmt_int(plim)}")
         if wlim:
             lines.append(f"     wk tokens:   {_fmt_int(wtoks)} / {_fmt_int(wlim)}")
-        lines.append(f"     mo tokens:   {_fmt_int(mtoks)} / {_fmt_int(mlim) if mlim else '—'}")
-    else:
-        lines.append(f"  ⚠ unavailable: {opencode.get('error', 'not configured')}")
+    lines.append(f"     mo tokens:   {_fmt_int(mtoks)} / {_fmt_int(mlim) if mlim else '—'}")
     return lines
 
 

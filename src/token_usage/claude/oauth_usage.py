@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import urllib.error
 import urllib.request
@@ -80,10 +81,8 @@ def _http_get(url: str, token: str, timeout: int = 10) -> tuple[dict | None, str
         return json.loads(body), None
     except urllib.error.HTTPError as e:
         body = ""
-        try:
+        with contextlib.suppress(OSError, UnicodeDecodeError, ValueError):
             body = e.read().decode("utf-8", errors="replace")[:200]
-        except (OSError, UnicodeDecodeError, ValueError):
-            pass
         return None, f"http {e.code}: {body}"
     except urllib.error.URLError as e:
         return None, f"url error: {e.reason}"
@@ -99,6 +98,9 @@ def fetch_usage() -> ClaudeUsage:
     data, err = _http_get(USAGE_ENDPOINT, token)
     if err or not data:
         return ClaudeUsage(available=False, error=err or "empty response")
+
+    if isinstance(data, dict) and data.get("error"):
+        return ClaudeUsage(available=False, error=f"api error: {data['error']}")
 
     def _pct(obj) -> float:
         if not isinstance(obj, dict):

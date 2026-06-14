@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from token_usage.formatters import statusbar, detail
+from token_usage.formatters import detail, statusbar
 
 
 def _extract_statusbar_pct(segment: str) -> float:
@@ -22,7 +22,7 @@ def _extract_bar_pct(detail_text: str) -> float:
             m = re.search(r"(\d+(?:\.\d+)?)%", line)
             assert m, f"no pct found in bar line: {line!r}"
             return float(m.group(1))
-    raise AssertionError(f"no ← bar marker found in detail text")
+    raise AssertionError("no ← bar marker found in detail text")
 
 
 # ---------------------------------------------------------------------------
@@ -262,3 +262,12 @@ def test_override_per_provider_consistency() -> None:
     assert _extract_statusbar_pct(segments[0]) == bar_pcts[0]
     assert _extract_statusbar_pct(segments[1]) == bar_pcts[1]
     assert _extract_statusbar_pct(segments[2]) == bar_pcts[2]
+
+
+def test_shared_select_bar_window_is_canonical() -> None:
+    from token_usage.formatters import detail as det_mod
+    from token_usage.formatters import statusbar as sb_mod
+    from token_usage.formatters._shared import _select_bar_window as shared_fn
+
+    assert sb_mod._select_bar_window is shared_fn
+    assert det_mod._select_bar_window is shared_fn

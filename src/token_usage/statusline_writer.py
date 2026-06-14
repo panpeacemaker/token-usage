@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -24,9 +25,9 @@ def _format_status(data: dict) -> str:
     five = (rate.get("five_hour") or {}).get("used_percentage")
     seven = (rate.get("seven_day") or {}).get("used_percentage")
     if five is not None:
-        parts.append(f"5h {int(round(float(five)))}%")
+        parts.append(f"5h {round(float(five))}%")
     if seven is not None:
-        parts.append(f"7d {int(round(float(seven)))}%")
+        parts.append(f"7d {round(float(seven))}%")
 
     ctx = (data.get("context_window") or {}).get("used_percentage")
     if ctx is not None:
@@ -34,10 +35,8 @@ def _format_status(data: dict) -> str:
 
     cost = (data.get("cost") or {}).get("total_cost_usd")
     if cost is not None:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             parts.append(f"${float(cost):.2f}")
-        except (TypeError, ValueError):
-            pass
 
     return " | ".join(parts)
 

@@ -14,6 +14,7 @@ class UsageEntry:
     output_tokens: int
     cache_creation_tokens: int
     cache_read_tokens: int
+    kind: str = "turn"
 
     @property
     def total_tokens(self) -> int:

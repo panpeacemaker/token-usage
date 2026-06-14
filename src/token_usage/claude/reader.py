@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
 
 from .models import UsageEntry
 
@@ -43,6 +43,13 @@ def _parse_line(line: str) -> UsageEntry | None:
     message_id = str(msg.get("id") or "")
     request_id = str(data.get("requestId") or "")
 
+    if data.get("isSidechain"):
+        kind = "sidechain"
+    elif msg.get("stop_reason") == "tool_use":
+        kind = "tool"
+    else:
+        kind = "turn"
+
     inp = int(usage.get("input_tokens", 0) or 0)
     out = int(usage.get("output_tokens", 0) or 0)
     cc = int(usage.get("cache_creation_input_tokens", 0) or 0)
@@ -60,6 +67,7 @@ def _parse_line(line: str) -> UsageEntry | None:
         output_tokens=out,
         cache_creation_tokens=cc,
         cache_read_tokens=cr,
+        kind=kind,
     )
 
 

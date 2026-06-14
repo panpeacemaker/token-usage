@@ -114,3 +114,13 @@ def test_missing_seven_day_utilization_returns_schema_error() -> None:
         result = oauth_usage.fetch_usage()
     assert not result.available
     assert "schema: missing seven_day utilization" in result.error
+
+
+def test_error_body_with_200_returns_unavailable() -> None:
+    body = {"error": {"type": "rate_limit_error", "message": "Rate limited. Please try again later."}}
+    with patch.object(oauth_usage, "_read_token", return_value=("fake-token", None)), \
+         patch.object(oauth_usage, "_http_get", return_value=(body, None)):
+        result = oauth_usage.fetch_usage()
+    assert not result.available
+    assert result.five_hour_pct == 0.0
+    assert "rate_limit_error" in result.error

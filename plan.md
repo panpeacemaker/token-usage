@@ -213,3 +213,36 @@ disagreement.
 - Each wave = separate commit(s); tests green after every wave.
 - Wave 0 findings may reorder Wave 2 items — update this file.
 - Estimated effort: 1–2 days total (Oracle estimate, high confidence).
+
+---
+
+## Shipped semantics update
+
+**Date:** 2026-06-14
+**Status:** D1-D5 shipped and documented.
+
+- **D1 Claude source selection:** precedence is OAuth when truly available, then
+  fresh statusline, then last-known-good (LKG) real data with unexpired windows,
+  then a local JSONL **estimate**, then stale statusline, then none/error. Real
+  numbers (oauth / fresh statusline / valid LKG) always beat the local JSONL
+  aggregation: Anthropic's 5h/7d percentages are opaque and cache-read-weighted,
+  so the local figure can be several times off the real dashboard (observed live:
+  local 121% vs dashboard 39%). LKG is marked **stale** (`c42%*`) and local is
+  marked **estimate** (`c42%?`) so neither is mistaken for an authoritative live
+  number. `--detail` prints `source:` provenance with rejection reasons. OAuth
+  errors and 429s are errors, never silent zeroes.
+- **D2 OpenCode idle:** Zen and Go render `e idle` or `g idle` when both 5h and
+  weekly quota windows have zero usage. `--detail` prints the `⏼ idle` note.
+  This is separate from active 0% usage. Monthly tokens still show when present.
+- **D3 Claude messages:** weekly `messages` count only real user/assistant API
+  turns, deduped by message/request identity. Tool-call and sidechain records are
+  excluded, so the message percentage is reproducible and cannot be inflated by
+  internal records.
+- **D4 OpenCode windows:** Zen and Go now share fixed calendar windows: 5h blocks
+  anchored to the UTC epoch, weekly at Monday 00:00 UTC, monthly at the 1st
+  00:00 UTC. Reset labels are exact, shown with `@` in statusbar and `(fixed)` in
+  detail. This replaces the old `oldest_entry + window` rolling semantics.
+- **D5 cache-read accounting:** local Claude effective tokens are billed tokens,
+  input plus output plus cache creation, plus `cache_read_weight × cache_read`.
+  The default weight is 1.0 and is configurable. `--detail` prints the full
+  effective-token formula so percentages can be reproduced from raw tokens.

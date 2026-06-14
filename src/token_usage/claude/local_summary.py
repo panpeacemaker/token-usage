@@ -119,7 +119,7 @@ def compute_local(
     if five_h_reset is None:
         five_h_reset = now + timedelta(hours=5)
 
-    seven_day_pct = float(week.get("pct") or 0)
+    seven_day_pct = max(float(week.get("pct") or 0), float(week.get("pct_messages") or 0))
 
     usage = ClaudeUsage(
         available=True,
